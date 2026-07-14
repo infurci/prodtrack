@@ -348,6 +348,17 @@ const API = {
   listWO(){ return this.req('GET','/api/workorders'); },
   createWO(wo){ return this.req('POST','/api/workorders',wo); },
   updateWO(id,wo){ return this.req('PUT','/api/workorders/'+encodeURIComponent(id),wo); },
+  listDocs(){ return this.req('GET','/api/documents'); },
+  createDoc(d){ return this.req('POST','/api/documents',d); },
+  updateDoc(id,d){ return this.req('PUT','/api/documents/'+encodeURIComponent(id),d); },
+  async uploadDocAttachment(id,file){
+    const fd=new FormData(); fd.append('file',file);
+    const r=await fetch('/api/documents/'+encodeURIComponent(id)+'/attachment',{method:'POST',body:fd,credentials:'same-origin'});
+    let data=null; try{ data=await r.json(); }catch(e){}
+    if(!r.ok){ throw new Error((data&&data.error)||('Upload failed ('+r.status+')')); }
+    return data;
+  },
+  removeDocAttachment(id){ return this.req('DELETE','/api/documents/'+encodeURIComponent(id)+'/attachment'); },
 };
 
 // Persist a single work order (create if new, update if it exists on server).
@@ -421,6 +432,13 @@ async function bootData(){
     rows.forEach(w=>WOS.push(w));
   }catch(err){
     console.error('Failed to load work orders:', err.message);
+  }
+  try{
+    const docs=await API.listDocs();
+    QMS_DOCS_FLAT.length=0;
+    docs.forEach(d=>QMS_DOCS_FLAT.push(d));
+  }catch(err){
+    console.error('Failed to load controlled documents:', err.message);
   }
   render();
 }
@@ -1986,6 +2004,7 @@ const QMS_DOCS = {
 
 // Document form state
 let QMS_DOC_FORM = null;
+let QMS_DOC_PENDING_FILE = null; // File chosen but not yet uploaded (staged until save)
 function dpBlankDoc(){
   return {id:'DOC-'+Date.now(),ref:'',level:'H4',category:'procedures',title:'',rev:'R00',status:'draft',date:new Date().toISOString().split('T')[0],owner:'',standard:'AS9100D §7.5',retention:'LOP+6 YRS',description:'',applicability:'',writer:'',checker:'',approver:'',approvals:{writer:{signed:false,name:'',date:''},checker:{signed:false,name:'',date:''},approver:{signed:false,name:'',date:''}},revHistory:[{rev:'R00',date:new Date().toISOString().split('T')[0],editor:'',object:'Initial issue'}],tags:[],format:'PDF / SharePoint',language:'English',linkedDocs:[]};
 }
@@ -2165,7 +2184,7 @@ function vQMS(){
         <div class="page-title" style="font-size:14px">Controlled Document Register</div>
         <div style="font-size:11px;color:var(--t2)">AS9100D §7.5 · SABCA M02-02-04-01 R09 · Preparation → Check → Approval → Distribution → Archiving</div>
       </div>
-      <button class="btn btn-a" onclick="QST.dpForm=true;QMS_DOC_FORM=dpBlankDoc();render()"><i class="ti ti-plus"></i>New document</button>
+      <button class="btn btn-a" onclick="QST.dpForm=true;QMS_DOC_FORM=dpBlankDoc();QMS_DOC_PENDING_FILE=null;render()"><i class="ti ti-plus"></i>New document</button>
     </div>
 
     <!-- KPIs -->
@@ -2215,7 +2234,7 @@ function vQMS(){
           </div>
           <div style="display:flex;gap:6px;align-items:center">
             <span class="bdg b-gy">${lvDocs.length}</span>
-            <button class="btn btn-s btn-a" onclick="QST.dpForm=true;QMS_DOC_FORM={...dpBlankDoc(),level:'${lv}',category:'${dpCategoryForLevel(lv)}'};render()" style="font-size:10px"><i class="ti ti-plus"></i>Add ${lv}</button>
+            <button class="btn btn-s btn-a" onclick="QST.dpForm=true;QMS_DOC_FORM={...dpBlankDoc(),level:'${lv}',category:'${dpCategoryForLevel(lv)}'};QMS_DOC_PENDING_FILE=null;render()" style="font-size:10px"><i class="ti ti-plus"></i>Add ${lv}</button>
           </div>
         </div>
         <table class="tbl"><thead><tr>
@@ -2236,6 +2255,7 @@ function vQMS(){
             <td style="font-size:10px;font-weight:700;color:var(--t2)">${d.ref||d.id}</td>
             <td style="font-size:12px;font-weight:500;white-space:normal;line-height:1.3">
               ${d.title}
+              ${d.attachmentName?`<i class="ti ti-file-type-pdf" style="color:var(--red);margin-left:4px" title="PDF attached: ${d.attachmentName}"></i>`:''}
               ${(d.tags||[]).map(t=>`<span class="chip" style="font-size:9px;margin-left:3px">${t}</span>`).join('')}
             </td>
             <td style="text-align:center;font-size:11px;font-weight:600">${d.rev||'—'}</td>
@@ -2251,7 +2271,7 @@ function vQMS(){
             </td>
             <td onclick="event.stopPropagation()">
               <div style="display:flex;gap:4px">
-                <button class="btn btn-s" title="Edit" onclick="QST.dpEdit='${d.id}';QMS_DOC_FORM=JSON.parse(JSON.stringify(QMS_DOCS_FLAT.find(x=>x.id==='${d.id}')));render()" style="padding:3px 6px"><i class="ti ti-pencil"></i></button>
+                <button class="btn btn-s" title="Edit" onclick="QST.dpEdit='${d.id}';QMS_DOC_FORM=JSON.parse(JSON.stringify(QMS_DOCS_FLAT.find(x=>x.id==='${d.id}')));QMS_DOC_PENDING_FILE=null;render()" style="padding:3px 6px"><i class="ti ti-pencil"></i></button>
                 <button class="btn btn-s" title="New revision" onclick="dpNewRevision('${d.id}')" style="padding:3px 6px"><i class="ti ti-refresh"></i></button>
                 ${d.status!=='obsolete'?`<button class="btn btn-s" title="Mark obsolete" onclick="dpObsolete('${d.id}')" style="padding:3px 6px;color:var(--red)"><i class="ti ti-archive"></i></button>`:''}
               </div>
@@ -2548,10 +2568,15 @@ function dpRenderDetail(id){
     <div style="font-size:11px;color:var(--t2);margin-top:2px"><span style="background:${levelColor[d.level]||'#888'};color:#fff;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:700;margin-right:6px">${d.level}</span>${d.standard||'—'} · Owner: ${d.owner||'—'} · Retention: ${d.retention||'—'}</div>
   </div><div style="display:flex;gap:6px;align-items:center">
     ${stBdg(d.status)}
-    <button class="btn btn-s" onclick="QST.dpEdit='${d.id}';QMS_DOC_FORM=JSON.parse(JSON.stringify(QMS_DOCS_FLAT.find(x=>x.id==='${d.id}')));render()"><i class="ti ti-pencil"></i>Edit</button>
+    <button class="btn btn-s" onclick="QST.dpEdit='${d.id}';QMS_DOC_FORM=JSON.parse(JSON.stringify(QMS_DOCS_FLAT.find(x=>x.id==='${d.id}')));QMS_DOC_PENDING_FILE=null;render()"><i class="ti ti-pencil"></i>Edit</button>
     <button class="btn btn-s" onclick="dpNewRevision('${d.id}')"><i class="ti ti-refresh"></i>New revision</button>
   </div></div>
   <div class="g4" style="margin-bottom:12px">${[['Document ref',d.ref||d.id],['Revision',d.rev||'—'],['Issue date',d.date||'—'],['Format',d.format||'—']].map(([l,v])=>`<div style="background:var(--s2);border-radius:8px;padding:8px 10px"><div style="font-size:10px;color:var(--t2)">${l}</div><div style="font-size:12px;font-weight:700">${v}</div></div>`).join('')}</div>
+  ${d.attachmentName?`<div class="card" style="margin-bottom:12px;padding:10px 14px;display:flex;align-items:center;gap:10px">
+    <i class="ti ti-file-type-pdf" style="font-size:20px;color:var(--red)"></i>
+    <div style="flex:1"><div style="font-size:12px;font-weight:600">${d.attachmentName}</div><div style="font-size:10px;color:var(--t2)">${dpFmtBytes(d.attachmentSize)}${d.attachmentUploadedAt?' · uploaded '+String(d.attachmentUploadedAt).split('T')[0]:''}</div></div>
+    <a class="btn btn-s btn-a" href="/api/documents/${encodeURIComponent(d.id)}/attachment" target="_blank" rel="noopener"><i class="ti ti-eye"></i>View PDF</a>
+  </div>`:`<div class="ib" style="margin-bottom:12px"><i class="ti ti-alert-circle"></i> No PDF attached yet. <button class="btn btn-s" onclick="QST.dpEdit='${d.id}';QMS_DOC_FORM=JSON.parse(JSON.stringify(QMS_DOCS_FLAT.find(x=>x.id==='${d.id}')));QMS_DOC_PENDING_FILE=null;render()">Attach now</button></div>`}
   <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-file-description"></i>Scope &amp; applicability</div></div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div>
     <div style="font-size:10px;color:var(--t2);margin-bottom:4px">DESCRIPTION</div><div style="font-size:12px;line-height:1.6">${d.description||'—'}</div>
@@ -2592,10 +2617,14 @@ function dpRenderForm(isEdit){
   const lvlHints={QM:'Quality Manuals: Writer=QLT_QMS_TM/MR · Checker=delegated authority · Approver=QLT_DR',H4:'Procedures: Writer=Anyone · Checker=QLT_QMS_TM · Approver=QLT-POW-TM',H5:'Instructions: Writer=Anyone · Checker=delegated authority · Approver=QLT-POW-TM',REC:'Records: per responsible department'};
   return `
   <div class="page-hdr" style="margin-bottom:12px"><div>
-    <button class="btn btn-s" onclick="${isEdit?`QST.dpEdit=null;QMS_DOC_FORM=null;QST.dpActive='${f.id}';render()`:'QST.dpForm=false;QMS_DOC_FORM=null;render()'}" style="margin-bottom:6px"><i class="ti ti-x"></i>Cancel</button>
+    <button class="btn btn-s" onclick="${isEdit?`QST.dpEdit=null;QMS_DOC_FORM=null;QMS_DOC_PENDING_FILE=null;QST.dpActive='${f.id}';render()`:'QST.dpForm=false;QMS_DOC_FORM=null;QMS_DOC_PENDING_FILE=null;render()'}" style="margin-bottom:6px"><i class="ti ti-x"></i>Cancel</button>
     <div class="page-title">${isEdit?'Edit document — '+f.ref:'New controlled document'}</div>
     <div style="font-size:11px;color:var(--t2)">AS9100D §7.5 · SABCA M02-02-04-01 R09</div>
   </div><button class="btn btn-g" onclick="dpSaveForm(${isEdit})"><i class="ti ti-check"></i>${isEdit?'Save changes':'Create document'}</button></div>
+
+  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-file-type-pdf"></i>Quality document (PDF)</div></div>
+  ${dpAttachmentBlock(f)}
+  </div>
 
   <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-id"></i>1 — Document identification</div></div>
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
@@ -2643,14 +2672,71 @@ function dpRenderForm(isEdit){
   </div>
 
   <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
-    <button class="btn" onclick="${isEdit?`QST.dpEdit=null;QMS_DOC_FORM=null;QST.dpActive='${f.id}';render()`:'QST.dpForm=false;QMS_DOC_FORM=null;render()'}">Cancel</button>
+    <button class="btn" onclick="${isEdit?`QST.dpEdit=null;QMS_DOC_FORM=null;QMS_DOC_PENDING_FILE=null;QST.dpActive='${f.id}';render()`:'QST.dpForm=false;QMS_DOC_FORM=null;QMS_DOC_PENDING_FILE=null;render()'}">Cancel</button>
     <button class="btn btn-g" onclick="dpSaveForm(${isEdit})"><i class="ti ti-check"></i>${isEdit?'Save changes':'Create controlled document'}</button>
   </div>`;
 }
 
 function dpFormSet(path,val){if(!QMS_DOC_FORM)return;const parts=path.split('.');let obj=QMS_DOC_FORM;for(let i=0;i<parts.length-1;i++)obj=obj[parts[i]];obj[parts[parts.length-1]]=val;}
 
-function dpSaveForm(isEdit){
+function dpFmtBytes(n){
+  if(n===null||n===undefined||n==='')return '—';
+  n=Number(n);
+  if(n<1024)return n+' B';
+  if(n<1024*1024)return (n/1024).toFixed(1)+' KB';
+  return (n/1024/1024).toFixed(2)+' MB';
+}
+
+// Stage a PDF chosen in the form — actual upload happens on save, once the
+// document has (or already has) a server-side ID to attach it to.
+function dpFileChosen(inputEl){
+  const file=inputEl.files&&inputEl.files[0];
+  if(!file)return;
+  const isPdf=file.type==='application/pdf'||/\.pdf$/i.test(file.name);
+  if(!isPdf){alert('Only PDF files can be attached as the quality document.');inputEl.value='';return;}
+  if(file.size>25*1024*1024){alert('PDF is too large (max 25 MB).');inputEl.value='';return;}
+  QMS_DOC_PENDING_FILE=file;
+  render();
+}
+function dpClearPendingFile(){QMS_DOC_PENDING_FILE=null;render();}
+
+// Remove an already-uploaded attachment from a saved document.
+async function dpRemoveAttachment(id){
+  if(!window.confirm('Remove the attached PDF from this controlled document?'))return;
+  try{
+    await API.removeDocAttachment(id);
+    const patch={attachmentName:null,attachmentMime:null,attachmentSize:null,attachmentUploadedAt:null};
+    if(QMS_DOC_FORM&&QMS_DOC_FORM.id===id)Object.assign(QMS_DOC_FORM,patch);
+    const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(d)Object.assign(d,patch);
+    render();
+  }catch(err){alert('Could not remove attachment: '+err.message);}
+}
+
+function dpAttachmentBlock(f){
+  if(QMS_DOC_PENDING_FILE){
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--acc);border-radius:8px;background:var(--s2)">
+      <i class="ti ti-file-type-pdf" style="font-size:22px;color:var(--acc)"></i>
+      <div style="flex:1"><div style="font-size:12px;font-weight:600">${QMS_DOC_PENDING_FILE.name}</div><div style="font-size:10px;color:var(--t2)">${dpFmtBytes(QMS_DOC_PENDING_FILE.size)} · will be uploaded on save</div></div>
+      <button type="button" class="btn btn-s" onclick="dpClearPendingFile()"><i class="ti ti-x"></i>Remove</button>
+    </div>`;
+  }
+  if(f.attachmentName){
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--bd);border-radius:8px">
+      <i class="ti ti-file-type-pdf" style="font-size:22px;color:var(--red)"></i>
+      <div style="flex:1"><div style="font-size:12px;font-weight:600">${f.attachmentName}</div><div style="font-size:10px;color:var(--t2)">${dpFmtBytes(f.attachmentSize)}${f.attachmentUploadedAt?' · uploaded '+String(f.attachmentUploadedAt).split('T')[0]:''}</div></div>
+      <a class="btn btn-s" href="/api/documents/${encodeURIComponent(f.id)}/attachment" target="_blank" rel="noopener"><i class="ti ti-eye"></i>View</a>
+      <label class="btn btn-s" style="cursor:pointer">Replace<input type="file" accept="application/pdf,.pdf" style="display:none" onchange="dpFileChosen(this)"></label>
+      <button type="button" class="btn btn-s" style="color:var(--red)" onclick="dpRemoveAttachment('${f.id}')"><i class="ti ti-trash"></i>Remove</button>
+    </div>`;
+  }
+  return `<div class="fg">
+    <label class="fl">Attach the quality document (PDF)</label>
+    <input class="fi" type="file" accept="application/pdf,.pdf" onchange="dpFileChosen(this)">
+    <div style="font-size:10px;color:var(--t2);margin-top:4px">PDF only, max 25 MB — this becomes the stored controlled copy of the document itself.</div>
+  </div>`;
+}
+
+async function dpSaveForm(isEdit){
   const f=QMS_DOC_FORM;if(!f)return;
   if(!f.ref){alert('Document reference is required.');return;}
   if(!f.title){alert('Document title is required.');return;}
@@ -2666,11 +2752,31 @@ function dpSaveForm(isEdit){
   if(!f.revHistory)f.revHistory=[];
   if(!f.revHistory.find(r=>r.rev===f.rev))f.revHistory.push({rev:f.rev,date:f.date||new Date().toISOString().split('T')[0],editor:revEditor,object:revObject});
   delete f._revEditor;delete f._revObject;delete f._tagsStr;delete f._linkedDocsStr;
-  if(isEdit){const idx=QMS_DOCS_FLAT.findIndex(x=>x.id===f.id);if(idx>=0)QMS_DOCS_FLAT.splice(idx,1,JSON.parse(JSON.stringify(f)));QST.dpEdit=null;QMS_DOC_FORM=null;QST.dpActive=f.id;}
-  else{QMS_DOCS_FLAT.push(JSON.parse(JSON.stringify(f)));QST.dpForm=false;QMS_DOC_FORM=null;QST.dpActive=f.id;}
+  const payload=JSON.parse(JSON.stringify(f));
+  let saved;
+  try{
+    saved = isEdit ? await API.updateDoc(f.id, payload) : await API.createDoc(payload);
+  }catch(err){
+    alert('Could not save controlled document: '+err.message);
+    return;
+  }
+  if(QMS_DOC_PENDING_FILE){
+    try{ saved = await API.uploadDocAttachment(saved.id, QMS_DOC_PENDING_FILE); }
+    catch(err){ alert('Document saved, but the PDF attachment failed to upload: '+err.message); }
+    QMS_DOC_PENDING_FILE=null;
+  }
+  if(isEdit){const idx=QMS_DOCS_FLAT.findIndex(x=>x.id===saved.id);if(idx>=0)QMS_DOCS_FLAT.splice(idx,1,saved);else QMS_DOCS_FLAT.push(saved);QST.dpEdit=null;}
+  else{QMS_DOCS_FLAT.push(saved);QST.dpForm=false;}
+  QMS_DOC_FORM=null;QST.dpActive=saved.id;
   render();
 }
-function dpSign(id,role){
+// Persist an in-place document mutation to the server (mirrors saveWO()).
+async function dpPersist(d){
+  try{ await API.updateDoc(d.id, d); }
+  catch(err){ alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'); }
+}
+
+async function dpSign(id,role){
   const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(!d)return;
   const name=prompt('Sign off as '+role+'. Enter your full name to confirm:');if(!name)return;
   if(!d.approvals)d.approvals={};
@@ -2679,10 +2785,11 @@ function dpSign(id,role){
   if(sigCount>=3){if(d.status==='draft')d.status='in-review';else if(d.status==='in-review')d.status='approved';}
   if(QMS_DOC_FORM&&QMS_DOC_FORM.id===id){if(!QMS_DOC_FORM.approvals)QMS_DOC_FORM.approvals={};QMS_DOC_FORM.approvals[role]={signed:true,name,date:new Date().toISOString().split('T')[0]};}
   render();
+  await dpPersist(d);
 }
-function dpApproveDoc(id){const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(d)d.status='approved';render();}
-function dpSubmitForReview(id){const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(d)d.status='in-review';render();}
-function dpNewRevision(id){
+async function dpApproveDoc(id){const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(!d)return;d.status='approved';render();await dpPersist(d);}
+async function dpSubmitForReview(id){const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(!d)return;d.status='in-review';render();await dpPersist(d);}
+async function dpNewRevision(id){
   const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(!d)return;
   const newRev=dpNextRevision(d.rev);
   if(!window.confirm('Start new revision '+newRev+' of "'+d.title+'"?\n\nThis will:\n• Reset all approval signatures\n• Set status to draft\n• Preserve revision history\n\nProceed?'))return;
@@ -2691,9 +2798,10 @@ function dpNewRevision(id){
   if(!d.revHistory)d.revHistory=[];
   d.revHistory.push({rev:newRev,date:d.date,editor:ST.role,object:'New revision — object TBD'});
   QST.dpActive=id;render();
+  await dpPersist(d);
 }
-function dpObsolete(id){const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(!d)return;if(!window.confirm('Mark "'+d.title+'" as obsolete?'))return;d.status='obsolete';render();}
-function dpAddRevNote(id){const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(!d)return;const note=prompt('Enter the object/reason for this revision entry:');if(!note)return;if(!d.revHistory)d.revHistory=[];d.revHistory.push({rev:d.rev,date:new Date().toISOString().split('T')[0],editor:ST.role,object:note});render();}
+async function dpObsolete(id){const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(!d)return;if(!window.confirm('Mark "'+d.title+'" as obsolete?'))return;d.status='obsolete';render();await dpPersist(d);}
+async function dpAddRevNote(id){const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(!d)return;const note=prompt('Enter the object/reason for this revision entry:');if(!note)return;if(!d.revHistory)d.revHistory=[];d.revHistory.push({rev:d.rev,date:new Date().toISOString().split('T')[0],editor:ST.role,object:note});render();await dpPersist(d);}
 
 /* ════════════════════════════════════════════
    QMS MODAL ACTIONS (stub alerts for demo)
