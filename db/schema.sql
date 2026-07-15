@@ -105,3 +105,27 @@ DROP TRIGGER IF EXISTS trg_cd_touch ON controlled_documents;
 CREATE TRIGGER trg_cd_touch
   BEFORE UPDATE ON controlled_documents
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ---------- WORK ORDER CHANGE REQUESTS ----------
+-- Editing "planning" fields (component, part numbers, drawing/batch no.,
+-- rev, dates, priority, assigned personnel, hazmat) on an existing Work
+-- Order doesn't apply immediately — it's staged here until a different
+-- quality/engineering/admin user approves it with their password.
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS pending_change JSONB;
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS pending_requested_by INTEGER REFERENCES users(id);
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS pending_requested_at TIMESTAMPTZ;
+
+-- ---------- EMPLOYEES ----------
+-- Roster of real people, managed only by the 'quality' role. Powers the
+-- name-autocomplete used across Work Order / document forms, and is the
+-- only place login accounts (users rows) can be granted or revoked from.
+CREATE TABLE IF NOT EXISTS employees (
+  id           SERIAL PRIMARY KEY,
+  full_name    TEXT NOT NULL,
+  active       BOOLEAN NOT NULL DEFAULT TRUE,
+  user_id      INTEGER REFERENCES users(id),
+  created_by   INTEGER REFERENCES users(id),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_employees_active ON employees(active);

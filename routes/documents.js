@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const multer = require('multer');
 const pool = require('../db/pool');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { checkPassword } = require('../middleware/password');
 
 const router = express.Router();
 
@@ -114,6 +115,52 @@ router.put('/:id', requireAuth, requireRole('quality', 'engineer', 'admin'), asy
   } catch (err) {
     console.error('Update document error:', err.message);
     res.status(500).json({ error: 'Could not update controlled document.' });
+  }
+});
+
+// POST /api/documents/:id/sign   (quality/engineer/admin, password required)
+// Records a writer/checker/approver signature on the approval chain.
+router.post('/:id/sign', requireAuth, requireRole('quality', 'engineer', 'admin'), async (req, res) => {
+  const { role, name, password } = req.body || {};
+  if (!['writer', 'checker', 'approver'].includes(role)) {
+    return res.status(400).json({ error: 'Invalid signature role.' });
+  }
+  if (!name) return res.status(400).json({ error: 'Enter your full name to sign.' });
+  if (!(await checkPassword(req.user.id, password))) {
+    return res.status(401).json({ error: 'Incorrect password.' });
+  }
+  try {
+    const { rows: existing } = await pool.query('SELECT approvals, status FROM controlled_documents WHERE id = $1', [req.params.id]);
+    if (!existing[0]) return res.status(404).json({ error: 'Document not found.' });
+    const approvals = existing[0].approvals || {};
+    approvals[role] = { signed: true, name, date: new Date().toISOString().split('T')[0] };
+    const sigCount = Object.values(approvals).filter((a) => a.signed).length;
+    let status = existing[0].status;
+    if (sigCount >= 3 && status === 'draft') status = 'in-review';
+    const { rows } = await pool.query(
+      `UPDATE controlled_documents SET approvals=$2, status=$3 WHERE id=$1 RETURNING *`,
+      [req.params.id, JSON.stringify(approvals), status]
+    );
+    res.json(rowToDoc(rows[0]));
+  } catch (err) {
+    console.error('Document sign error:', err.message);
+    res.status(500).json({ error: 'Could not record signature.' });
+  }
+});
+
+// POST /api/documents/:id/approve   (quality/engineer/admin, password required)
+router.post('/:id/approve', requireAuth, requireRole('quality', 'engineer', 'admin'), async (req, res) => {
+  const { password } = req.body || {};
+  if (!(await checkPassword(req.user.id, password))) {
+    return res.status(401).json({ error: 'Incorrect password.' });
+  }
+  try {
+    const { rows } = await pool.query(`UPDATE controlled_documents SET status='approved' WHERE id=$1 RETURNING *`, [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Document not found.' });
+    res.json(rowToDoc(rows[0]));
+  } catch (err) {
+    console.error('Document approve error:', err.message);
+    res.status(500).json({ error: 'Could not approve document.' });
   }
 });
 

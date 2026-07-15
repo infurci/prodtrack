@@ -16,6 +16,7 @@ app.use(cookieParser());
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/workorders', require('./routes/workorders'));
 app.use('/api/documents', require('./routes/documents'));
+app.use('/api/employees', require('./routes/employees'));
 
 // --- Health check (used to confirm DB connectivity) ---
 app.get('/api/health', async (req, res) => {

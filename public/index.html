@@ -329,7 +329,7 @@ setInterval(()=>{const e=document.getElementById('clk');if(e)e.textContent=new D
 /* ════════════════════════════════════════════
    STATE
 ════════════════════════════════════════════ */
-const ST={role:'engineer',view:'dashboard',clocked:{},editingWI:null,editingOpId:null,dragSrcIdx:null,mediaURLs:{}};
+const ST={role:'engineer',userId:null,view:'dashboard',clocked:{},editingWI:null,editingOpId:null,dragSrcIdx:null,mediaURLs:{}};
 /* ══════════════════════════════════════════════════════════
    PRODTRACK API LAYER (Layer 1) — added for server persistence
    ══════════════════════════════════════════════════════════ */
@@ -359,7 +359,35 @@ const API = {
     return data;
   },
   removeDocAttachment(id){ return this.req('DELETE','/api/documents/'+encodeURIComponent(id)+'/attachment'); },
+  docSign(id,role,name,password){ return this.req('POST','/api/documents/'+encodeURIComponent(id)+'/sign',{role,name,password}); },
+  docApprove(id,password){ return this.req('POST','/api/documents/'+encodeURIComponent(id)+'/approve',{password}); },
+  woChangeRequest(id,change){ return this.req('POST','/api/workorders/'+encodeURIComponent(id)+'/change-request',change); },
+  woApproveChange(id,password){ return this.req('POST','/api/workorders/'+encodeURIComponent(id)+'/change-request/approve',{password}); },
+  woRejectChange(id,password,reason){ return this.req('POST','/api/workorders/'+encodeURIComponent(id)+'/change-request/reject',{password,reason}); },
+  listEmployees(){ return this.req('GET','/api/employees'); },
+  listEmployeesFull(){ return this.req('GET','/api/employees/full'); },
+  createEmployee(fullName){ return this.req('POST','/api/employees',{fullName}); },
+  updateEmployee(id,patch){ return this.req('PUT','/api/employees/'+encodeURIComponent(id),patch); },
+  grantAccess(id,body){ return this.req('POST','/api/employees/'+encodeURIComponent(id)+'/access',body); },
+  revokeAccess(id,password){ return this.req('DELETE','/api/employees/'+encodeURIComponent(id)+'/access',{password}); },
 };
+
+// Employee roster — powers name-autocomplete everywhere via a shared <datalist>.
+let EMPLOYEES = [];
+let EMPLOYEES_FULL = [];
+let EMPLOYEES_FULL_LOADED = false;
+function refreshEmpDatalist(){
+  let dl=document.getElementById('emp-list');
+  if(!dl){ dl=document.createElement('datalist'); dl.id='emp-list'; document.body.appendChild(dl); }
+  dl.innerHTML=EMPLOYEES.map(e=>`<option value="${String(e.fullName).replace(/"/g,'&quot;')}">`).join('');
+}
+async function refreshEmployeeAutocomplete(){
+  try{
+    const emps=await API.listEmployees();
+    EMPLOYEES.length=0; emps.forEach(e=>EMPLOYEES.push(e));
+    refreshEmpDatalist();
+  }catch(err){ console.error('Failed to load employees:', err.message); }
+}
 
 // Persist a single work order (create if new, update if it exists on server).
 async function saveWO(wo, isNew){
@@ -410,6 +438,7 @@ function showLogin(errMsg){
 // Apply the logged-in user's role to app state and header.
 function applySession(user){
   ST.role = user.role;
+  ST.userId = user.id;
   ST.user = user;
   const sel=document.querySelector('.role-sel');
   if(sel){
@@ -440,6 +469,7 @@ async function bootData(){
   }catch(err){
     console.error('Failed to load controlled documents:', err.message);
   }
+  await refreshEmployeeAutocomplete();
   render();
 }
 
@@ -648,7 +678,7 @@ function vDash(){
     <table class="tbl"><thead><tr><th style="width:90px">WO</th><th style="width:34%">Component</th><th style="width:13%">Priority</th><th style="width:14%">Status</th><th style="width:13%">Progress</th><th style="width:60px"></th></tr></thead><tbody>
     ${WOS.map(w=>{const p=woProgress(w);return`<tr class="cl" onclick="openWODetail('${w.id}')">
       <td style="font-weight:700;font-size:11px">${w.id}</td>
-      <td style="white-space:normal;line-height:1.3;font-weight:500">${w.component}${w.hazmat?` <span class="tag" style="font-size:9px;padding:1px 4px"><i class="ti ti-alert-triangle" style="font-size:8px"></i>HZ</span>`:''}</td>
+      <td style="white-space:normal;line-height:1.3;font-weight:500">${w.component}${w.hazmat?` <span class="tag" style="font-size:9px;padding:1px 4px"><i class="ti ti-alert-triangle" style="font-size:8px"></i>HZ</span>`:''}${w.pendingChange?` <span class="bdg b-am" style="font-size:9px"><i class="ti ti-hourglass" style="font-size:8px"></i>Pending approval</span>`:''}</td>
       <td>${priBdg(w.priority)}</td><td>${stBdg(w.status)}</td>
       <td><div style="display:flex;align-items:center;gap:5px"><div style="flex:1;height:4px;background:var(--s3);border-radius:2px"><div style="height:4px;width:${p.pct}%;background:var(--acc);border-radius:2px"></div></div><span style="font-size:10px;color:var(--t2)">${p.pct}%</span></div></td>
       <td><button class="btn btn-s" onclick="event.stopPropagation();openWODetail('${w.id}')"><i class="ti ti-external-link"></i></button></td>
@@ -675,6 +705,7 @@ function vProd(){
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0">${stBdg(w.status)}${priBdg(w.priority)}</div>
       </div>
+      ${w.pendingChange?`<div class="qal" style="padding:5px 8px;margin-bottom:8px"><i class="ti ti-hourglass" style="font-size:12px"></i><span style="font-size:10px">Change pending approval</span></div>`:''}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:10px;color:var(--t2)">
         <span><i class="ti ti-barcode"></i> ${w.batchNo}</span>
         <span><i class="ti ti-calendar"></i> ${w.startDate}</span>
@@ -845,12 +876,22 @@ function openWODetail(woId){
       <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap">${stBdg(wo.status)} ${priBdg(wo.priority)}
         ${proc==='outsource'?'<span class="bdg b-pu"><i class="ti ti-truck" style="font-size:9px"></i>Outsourced</span>':'<span class="bdg b-bl"><i class="ti ti-building-factory-2" style="font-size:9px"></i>In-house</span>'}
         ${wo.hazmat?'<span class="tag" style="font-size:9px"><i class="ti ti-alert-triangle" style="font-size:8px"></i>Hazmat</span>':''}
+        ${wo.pendingChange?'<span class="bdg b-am"><i class="ti ti-hourglass" style="font-size:9px"></i>Change pending approval</span>':''}
       </div>
     </div>
+    ${['engineer','admin'].includes(ST.role)?`<button class="btn btn-s" onclick="openNewWOForm('${wo.id}')"><i class="ti ti-edit"></i>Edit</button>`:''}
     <button class="btn btn-s" onclick="mA_tryClose()"><i class="ti ti-x"></i></button>`;
 
   const body=`
     ${wo.hazmat?`<div class="wb"><i class="ti ti-alert-triangle"></i> Resins cause sensitisation — gloves mandatory at ALL times. PPE per H&S sheet.</div>`:''}
+    ${wo.pendingChange?`<div class="qal" style="border-color:#ED93B1">
+      <i class="ti ti-hourglass"></i>
+      <div style="flex:1">
+        <strong>Change request awaiting approval</strong> — submitted by ${wo.pendingRequestedByName||'—'}${wo.pendingRequestedAt?' on '+String(wo.pendingRequestedAt).split('T')[0]:''}. This work order's planning fields (component, part numbers, drawing/batch no., rev, dates, priority, assigned personnel, hazmat) are blocked from further edits until this is resolved.
+        <div style="font-size:10px;color:var(--t2);margin-top:5px">${woChangeDiffSummary(wo)}</div>
+      </div>
+      ${['quality','engineer','admin'].includes(ST.role)&&wo.pendingRequestedById!==ST.userId?`<button class="btn btn-s btn-g" onclick="openWOApprovePanel('${wo.id}')"><i class="ti ti-check"></i>Review</button>`:`<span class="bdg b-am">Awaiting approval</span>`}
+    </div>`:''}
 
     ${woSec('Work Order Data','ti-file-description',`
       ${woGrid([
@@ -960,6 +1001,65 @@ function openWODetail(woId){
     ${clocked?`<span style="font-size:11px;color:var(--grn);align-self:center"><i class="ti ti-check"></i> ${clocked}</span>`:''}
     <button class="btn" style="margin-left:auto" onclick="mA_tryClose()">Close</button>`;
   setA(hdr,body,foot,'700px');
+}
+
+/* ── WO CHANGE-REQUEST APPROVAL ── */
+const WO_GATED_FIELDS=[['component','Component'],['partNo','Part / Assy P/N'],['elbitPn','Elbit P/N'],['drawingNo','Drawing no.'],['batchNo','Batch no.'],['rev','Revision'],['startDate','Start date'],['priority','Priority'],['assignedTo','Assigned personnel'],['hazmat','Hazmat']];
+function woFieldFmt(k,v){
+  if(k==='assignedTo') return Array.isArray(v)&&v.length?v.join(', '):'—';
+  if(k==='hazmat') return v?'Yes':'No';
+  return v||'—';
+}
+function woChangedFields(wo){
+  const c=wo.pendingChange||{};
+  return WO_GATED_FIELDS.filter(([k])=>JSON.stringify(c[k])!==JSON.stringify(wo[k]));
+}
+function woChangeDiffSummary(wo){
+  const changed=woChangedFields(wo);
+  if(!changed.length) return 'No field differences detected.';
+  return changed.map(([k,l])=>`${l}: "${woFieldFmt(k,wo[k])}" → "${woFieldFmt(k,wo.pendingChange[k])}"`).join(' · ');
+}
+function openWOApprovePanel(woId){
+  const wo=WOS.find(w=>w.id===woId);if(!wo||!wo.pendingChange)return;
+  const changed=woChangedFields(wo);
+  const hdr=`<div style="flex:1"><div class="modal-title" style="font-size:15px">Review change request — ${wo.id}</div><div style="font-size:11px;color:var(--t2);margin-top:2px">Requested by ${wo.pendingRequestedByName||'—'}${wo.pendingRequestedAt?' on '+String(wo.pendingRequestedAt).split('T')[0]:''}</div></div><button class="btn btn-s" onclick="mA_tryClose()"><i class="ti ti-x"></i></button>`;
+  const body=`
+    <table class="tbl"><thead><tr><th>Field</th><th>Current</th><th>Proposed</th></tr></thead><tbody>
+    ${changed.map(([k,l])=>`<tr><td style="font-weight:600;font-size:11px">${l}</td><td style="color:var(--t2);font-size:11px">${woFieldFmt(k,wo[k])}</td><td style="color:var(--grn);font-weight:600;font-size:11px">${woFieldFmt(k,wo.pendingChange[k])}</td></tr>`).join('')}
+    ${!changed.length?'<tr><td colspan="3" style="text-align:center;color:var(--t3);padding:10px">No field differences detected.</td></tr>':''}
+    </tbody></table>
+    <div class="fg" style="margin-top:14px"><label class="fl">Your password, to confirm this decision <span class="req">*</span></label><input class="fi" type="password" id="woap-pw" placeholder="Enter your password"></div>
+    <div id="woap-err" style="display:none;color:var(--red);font-size:12px;margin-top:6px;padding:8px 10px;background:var(--red-bg);border-radius:6px"></div>`;
+  const foot=`
+    <button class="btn btn-r" onclick="woRejectChangeUI('${woId}')"><i class="ti ti-x"></i>Reject</button>
+    <button class="btn btn-g" style="margin-left:auto" onclick="woApproveChangeUI('${woId}')"><i class="ti ti-check"></i>Approve &amp; apply</button>`;
+  setA(hdr,body,foot,'620px');
+}
+function woApWantPassword(){
+  const pw=document.getElementById('woap-pw').value;
+  const errEl=document.getElementById('woap-err');
+  if(!pw){errEl.textContent='Enter your password to continue.';errEl.style.display='block';return null;}
+  errEl.style.display='none';
+  return pw;
+}
+async function woApproveChangeUI(woId){
+  const pw=woApWantPassword();if(!pw)return;
+  const errEl=document.getElementById('woap-err');
+  try{
+    const updated=await API.woApproveChange(woId,pw);
+    const idx=WOS.findIndex(w=>w.id===woId);if(idx>=0)WOS[idx]=updated;
+    closeModal('mA');render();
+  }catch(err){ errEl.textContent=err.message; errEl.style.display='block'; }
+}
+async function woRejectChangeUI(woId){
+  const pw=woApWantPassword();if(!pw)return;
+  const errEl=document.getElementById('woap-err');
+  const reason=prompt('Reason for rejecting this change (optional):')||'';
+  try{
+    const updated=await API.woRejectChange(woId,pw,reason);
+    const idx=WOS.findIndex(w=>w.id===woId);if(idx>=0)WOS[idx]=updated;
+    closeModal('mA');render();
+  }catch(err){ errEl.textContent=err.message; errEl.style.display='block'; }
 }
 
 /* ── OP DETAIL MODAL (also Modal A) ── */
@@ -1314,6 +1414,10 @@ function ggrid(cols,items){
 function openNewWOForm(editId){
   var isEdit=!!editId;
   var wo=isEdit?WOS.find(function(w){return w.id===editId;}):null;
+  if(wo&&wo.pendingChange){
+    alert('This work order already has a change request awaiting approval. Wait for it to be approved or rejected before submitting another edit.');
+    return;
+  }
   var os=(wo&&wo.outsource)||{};
   var proc=(wo&&wo.procurement)||'inhouse';
   var today=new Date().toISOString().split('T')[0];
@@ -1347,7 +1451,7 @@ function openNewWOForm(editId){
       frow('A/C S/N',fi('nw-acsn','e.g. MSNXXX',g(wo&&wo.aircraftSN))),
     ])
     +ggrid('1fr 1fr 1fr',[
-      frow('Start date',fi('nw-date','','',g(wo&&wo.startDate)||today,'type="date"'),'*'),
+      frow('Start date',fi('nw-date','',g(wo&&wo.startDate)||today,'date'),'*'),
       frow('Estimated completion',fi('nw-end','','',g(wo&&wo.endDate),'type="date"')),
       frow('Hazmat materials','<select class="fi" id="nw-haz"><option value="false"'+(!(wo&&wo.hazmat)?' selected':'')+'>No</option><option value="true"'+((wo&&wo.hazmat)?' selected':'')+'>Yes — resins / chemicals</option></select>'),
     ])
@@ -1361,12 +1465,12 @@ function openNewWOForm(editId){
       var nm=ids[i];
       var curN=wo&&wo[nm+'By']||''; var curD=wo&&wo[nm+'Date']||'';
       return '<div style="display:grid;grid-template-columns:1fr 160px;gap:7px;margin-bottom:6px">'
-        +'<input class="fi" id="nw-'+nm+'-by" placeholder="Name Surname" value="'+curN.replace(/"/g,'&quot;')+'">'
+        +'<input class="fi" id="nw-'+nm+'-by" list="emp-list" placeholder="Name Surname" value="'+curN.replace(/"/g,'&quot;')+'">'
         +'<input class="fi" type="date" id="nw-'+nm+'-date" value="'+curD+'">'
         +'</div>';
     }).join('')
     +'<div style="display:grid;grid-template-columns:1fr 160px;gap:7px;margin-bottom:0">'
-    +'<div class="fg"><label class="fl">Quality assurance</label><input class="fi" id="nw-qa-by" placeholder="Name Surname" value="'+(g(wo&&wo.qaBy)).replace(/"/g,'&quot;')+'"></div>'
+    +'<div class="fg"><label class="fl">Quality assurance</label><input class="fi" id="nw-qa-by" list="emp-list" placeholder="Name Surname" value="'+(g(wo&&wo.qaBy)).replace(/"/g,'&quot;')+'"></div>'
     +'<div class="fg"><label class="fl">QA date</label><input class="fi" type="date" id="nw-qa-date" value="'+g(wo&&wo.qaDate)+'"></div>'
     +'</div>'
   );
@@ -1473,7 +1577,7 @@ function openNewWOForm(editId){
     +'<div style="background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:12px;margin-bottom:12px">'
     +'<div style="font-size:11px;font-weight:700;color:var(--t1);margin-bottom:10px"><i class="ti ti-user-check" style="color:var(--pur)"></i> Buyer Information</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
-    +'<div class="fg"><label class="fl">Buyer name<span class="req">*</span></label><input class="fi" id="os-buyer-name" placeholder="Name Surname" value="'+(os.buyerName||'')+'"></div>'
+    +'<div class="fg"><label class="fl">Buyer name<span class="req">*</span></label><input class="fi" id="os-buyer-name" list="emp-list" placeholder="Name Surname" value="'+(os.buyerName||'')+'"></div>'
     +'<div class="fg"><label class="fl">Buyer department</label><input class="fi" id="os-buyer-dept" placeholder="e.g. Procurement / Supply Chain" value="'+(os.buyerDept||'')+'"></div>'
     +'<div class="fg"><label class="fl">Buyer email</label><input class="fi" type="email" id="os-buyer-email" placeholder="buyer@company.com" value="'+(os.buyerEmail||'')+'"></div>'
     +'<div class="fg"><label class="fl">Buyer phone</label><input class="fi" id="os-buyer-phone" placeholder="+xx xxx xxx xxxx" value="'+(os.buyerPhone||'')+'"></div>'
@@ -1497,7 +1601,7 @@ function openNewWOForm(editId){
   /* ── SECTION 7: REQUESTER / ISSUER ── */
   body+=fsec('Requester / Issuer of Work Order','ti-user',
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px">'
-    +'<div class="fg"><label class="fl">Issued / Requested by<span class="req">*</span></label><input class="fi" id="nw-issued-by" placeholder="Name Surname" value="'+((wo&&wo.issuedBy)||'').replace(/"/g,'&quot;')+'"></div>'
+    +'<div class="fg"><label class="fl">Issued / Requested by<span class="req">*</span></label><input class="fi" id="nw-issued-by" list="emp-list" placeholder="Name Surname" value="'+((wo&&wo.issuedBy)||'').replace(/"/g,'&quot;')+'"></div>'
     +'<div class="fg"><label class="fl">Issue date</label><input class="fi" type="date" id="nw-issue-date" value="'+((wo&&wo.issueDate)||today)+'"></div>'
     +'<div class="fg"><label class="fl">Requester department</label><input class="fi" id="nw-dept" placeholder="e.g. Engineering / Production Planning" value="'+((wo&&wo.issuerDept)||'').replace(/"/g,'&quot;')+'"></div>'
     +'<div class="fg"><label class="fl">Requester email</label><input class="fi" type="email" id="nw-email" placeholder="requester@company.com" value="'+((wo&&wo.issuerEmail)||'').replace(/"/g,'&quot;')+'"></div>'
@@ -1509,7 +1613,7 @@ function openNewWOForm(editId){
   /* ── SECTION 8: ASSIGNED OPERATORS ── */
   body+=fsec('Assigned Operators','ti-users',
     '<div class="fg"><label class="fl">Operator names <span style="color:var(--t3);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px">(comma-separated)</span></label>'
-    +'<input class="fi" id="nw-ops" placeholder="e.g. J. Silva, M. Costa, A. Lima" value="'+((wo&&wo.assignedTo&&wo.assignedTo.join(', '))||'').replace(/"/g,'&quot;')+'"></div>'
+    +'<input class="fi" id="nw-ops" list="emp-list" placeholder="e.g. J. Silva, M. Costa, A. Lima" value="'+((wo&&wo.assignedTo&&wo.assignedTo.join(', '))||'').replace(/"/g,'&quot;')+'"></div>'
   );
 
   /* ── SECTION 9: REMARKS ── */
@@ -1739,10 +1843,33 @@ function saveNewWO(editId){
 
   if(editId){
     var idx=WOS.findIndex(function(w){return w.id===editId;});
-    if(idx>=0)Object.assign(WOS[idx],data);
-    if(idx>=0)saveWO(WOS[idx],false);
-    closeModal('mD');render();
-    setTimeout(function(){openWODetail(editId);},80);
+    if(idx<0)return;
+    var current=WOS[idx];
+    if(current.pendingChange){
+      if(errEl){errEl.style.display='block';errMsg.textContent='This work order already has a change request awaiting approval.';}
+      return;
+    }
+    var gatedKeys=['component','partNo','elbitPn','drawingNo','batchNo','rev','startDate','priority','assignedTo','hazmat'];
+    var gated={}; gatedKeys.forEach(function(k){gated[k]=data[k];});
+    var gateChanged=gatedKeys.some(function(k){return JSON.stringify(gated[k])!==JSON.stringify(current[k]);});
+    var nonGated={}; Object.keys(data).forEach(function(k){ if(gatedKeys.indexOf(k)===-1) nonGated[k]=data[k]; });
+    Object.assign(current,nonGated); // non-planning fields apply immediately, same as before
+    (async function(){
+      try{
+        if(gateChanged){
+          var updated=await API.woChangeRequest(editId,gated);
+          current.pendingChange=updated.pendingChange;
+          current.pendingRequestedById=updated.pendingRequestedById;
+          current.pendingRequestedByName=updated.pendingRequestedByName;
+          current.pendingRequestedAt=updated.pendingRequestedAt;
+        }
+        await saveWO(current,false);
+        closeModal('mD');render();
+        setTimeout(function(){openWODetail(editId);},80);
+      }catch(err){
+        if(errEl){errEl.style.display='block';errMsg.textContent=err.message;}
+      }
+    })();
   } else {
     var newId='WO-2024-'+String(WOS.length+1).padStart(3,'0');
     var newWO=Object.assign({id:newId,status:'pending',ops:cloneOps([])},data);
@@ -2086,10 +2213,11 @@ function vQMS(){
     {k:'calibration',icon:'ti-ruler-measure',label:'Calibration'},
     {k:'suppliers',icon:'ti-truck',label:'Supplier Quality'},
     {k:'training',icon:'ti-school',label:'Training & Competence'},
+    ...(ST.role==='quality'?[{k:'users',icon:'ti-users-group',label:'Manage Users'}]:[]),
   ];
 
   const subNav=`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:14px;border-bottom:1px solid var(--bd);padding-bottom:10px">
-    ${subs.map(s=>`<button onclick="QST.sub='${s.k}';render()" style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:6px;border:1px solid ${QST.sub===s.k?'var(--acc)':'var(--bd)'};background:${QST.sub===s.k?'var(--acc)':'#fff'};color:${QST.sub===s.k?'#fff':'var(--t1)'};cursor:pointer;font-size:11px;font-weight:${QST.sub===s.k?'700':'500'}"><i class="ti ${s.icon}" style="font-size:13px"></i>${s.label}</button>`).join('')}
+    ${subs.map(s=>`<button onclick="QST.sub='${s.k}';${s.k==='users'?'loadEmployeesFull();':''}render()" style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:6px;border:1px solid ${QST.sub===s.k?'var(--acc)':'var(--bd)'};background:${QST.sub===s.k?'var(--acc)':'#fff'};color:${QST.sub===s.k?'#fff':'var(--t1)'};cursor:pointer;font-size:11px;font-weight:${QST.sub===s.k?'700':'500'}"><i class="ti ${s.icon}" style="font-size:13px"></i>${s.label}</button>`).join('')}
   </div>`;
 
   const ncrOpen=QMS_NCRS.filter(n=>n.status==='open').length;
@@ -2535,6 +2663,10 @@ function vQMS(){
     </div>`;
   }
 
+  else if(QST.sub==='users'){
+    content=renderManageUsers();
+  }
+
   return `
   <div class="page-hdr" style="margin-bottom:10px">
     <div>
@@ -2548,6 +2680,86 @@ function vQMS(){
   </div>
   ${subNav}
   ${content}`;
+}
+
+/* ════════════════════════════════════════════
+   MANAGE USERS (Quality role only)
+   Employee roster + login-access grant/revoke.
+════════════════════════════════════════════ */
+async function loadEmployeesFull(){
+  try{
+    const rows=await API.listEmployeesFull();
+    EMPLOYEES_FULL.length=0; rows.forEach(r=>EMPLOYEES_FULL.push(r));
+    EMPLOYEES_FULL_LOADED=true;
+    render();
+  }catch(err){ console.error('Failed to load employees (full):', err.message); }
+}
+function renderManageUsers(){
+  if(ST.role!=='quality'){
+    return `<div class="ib"><i class="ti ti-lock"></i> Only the Quality role can manage users.</div>`;
+  }
+  return `
+  <div class="page-hdr" style="margin-bottom:10px">
+    <div><div class="page-title" style="font-size:14px">Manage Users</div><div style="font-size:11px;color:var(--t2);margin-top:2px">Employee roster &amp; system login access — Quality role only. Login access must be explicitly granted here.</div></div>
+    <button class="btn btn-a" onclick="openAddEmployee()"><i class="ti ti-plus"></i>Add employee</button>
+  </div>
+  <div class="card">
+    <table class="tbl"><thead><tr><th>Name</th><th style="width:90px">Active</th><th style="width:110px">Login access</th><th style="width:100px">Username</th><th style="width:90px">Role</th><th style="width:190px">Actions</th></tr></thead><tbody>
+    ${EMPLOYEES_FULL.map(e=>`<tr>
+      <td style="font-weight:600;font-size:12px">${e.fullName}</td>
+      <td>${e.active?'<span class="bdg b-gn">Active</span>':'<span class="bdg b-gy">Inactive</span>'}</td>
+      <td>${e.hasAccess?'<span class="bdg b-bl">Granted</span>':'<span class="bdg b-gy">None</span>'}</td>
+      <td style="font-size:11px;color:var(--t2)">${e.username||'—'}</td>
+      <td style="font-size:11px;color:var(--t2)">${e.role||'—'}</td>
+      <td><div style="display:flex;gap:4px;flex-wrap:wrap">
+        ${e.hasAccess?`<button class="btn btn-s" style="color:var(--red)" onclick="revokeEmployeeAccess(${e.id})"><i class="ti ti-lock"></i>Revoke</button>`:`<button class="btn btn-s btn-a" onclick="openGrantAccess(${e.id})"><i class="ti ti-key"></i>Grant access</button>`}
+        <button class="btn btn-s" onclick="toggleEmployeeActive(${e.id},${!e.active})">${e.active?'Deactivate':'Reactivate'}</button>
+      </div></td>
+    </tr>`).join('')}
+    ${!EMPLOYEES_FULL.length?`<tr><td colspan="6" style="text-align:center;padding:18px;color:var(--t3);font-size:12px">${EMPLOYEES_FULL_LOADED?'No employees yet — add the first one above.':'Loading…'}</td></tr>`:''}
+    </tbody></table>
+  </div>`;
+}
+async function openAddEmployee(){
+  const name=prompt('Full name of the new employee:');if(!name)return;
+  try{
+    const emp=await API.createEmployee(name.trim());
+    EMPLOYEES_FULL.push(emp);
+    await refreshEmployeeAutocomplete();
+    render();
+  }catch(err){ alert('Could not add employee: '+err.message); }
+}
+async function toggleEmployeeActive(id,active){
+  try{
+    const emp=await API.updateEmployee(id,{active});
+    const idx=EMPLOYEES_FULL.findIndex(e=>e.id===id);if(idx>=0)EMPLOYEES_FULL[idx]=emp;
+    await refreshEmployeeAutocomplete();
+    render();
+  }catch(err){ alert('Could not update employee: '+err.message); }
+}
+function openGrantAccess(id){
+  const emp=EMPLOYEES_FULL.find(e=>e.id===id);if(!emp)return;
+  const username=prompt('Choose a username for '+emp.fullName+':');if(!username)return;
+  const password=prompt('Choose an initial password for '+emp.fullName+':');if(!password)return;
+  const role=prompt('Role (operator, quality, engineer, or admin):','operator');if(!role)return;
+  const confirmPassword=prompt('Confirm YOUR OWN password to authorise granting this access:');if(!confirmPassword)return;
+  grantEmployeeAccess(id,username.trim(),password,role.trim(),confirmPassword);
+}
+async function grantEmployeeAccess(id,username,password,role,confirmPassword){
+  try{
+    const emp=await API.grantAccess(id,{username,password,role,confirmPassword});
+    const idx=EMPLOYEES_FULL.findIndex(e=>e.id===id);if(idx>=0)EMPLOYEES_FULL[idx]=emp;
+    render();
+  }catch(err){ alert('Could not grant access: '+err.message); }
+}
+async function revokeEmployeeAccess(id){
+  if(!window.confirm('Revoke login access for this employee?'))return;
+  const password=prompt('Confirm YOUR OWN password to authorise revoking this access:');if(!password)return;
+  try{
+    const emp=await API.revokeAccess(id,password);
+    const idx=EMPLOYEES_FULL.findIndex(e=>e.id===id);if(idx>=0)EMPLOYEES_FULL[idx]=emp;
+    render();
+  }catch(err){ alert('Could not revoke access: '+err.message); }
 }
 
 /* ════════════════════════════════════════════
@@ -2610,6 +2822,7 @@ function dpRenderDetail(id){
 function dpRenderForm(isEdit){
   const f=QMS_DOC_FORM;if(!f)return '<div>No form data</div>';
   const inp=(path,val,ph,type)=>`<input class="fi" type="${type||'text'}" placeholder="${ph||''}" value="${val||''}" oninput="dpFormSet('${path}',this.value)">`;
+  const empInp=(path,val,ph)=>`<input class="fi" type="text" list="emp-list" placeholder="${ph||''}" value="${val||''}" oninput="dpFormSet('${path}',this.value)">`;
   const sel=(path,opts,val)=>`<select class="fi" onchange="dpFormSet('${path}',this.value)">${opts.map(o=>`<option value="${o}" ${o===val?'selected':''}>${o}</option>`).join('')}</select>`;
   const ta=(path,val,ph,rows)=>`<textarea class="fi" rows="${rows||3}" placeholder="${ph||''}" oninput="dpFormSet('${path}',this.value)">${val||''}</textarea>`;
   const levelColor={QM:'var(--acc)',H4:'var(--blu)',H5:'#534AB7',REC:'var(--grn)'};
@@ -2651,9 +2864,9 @@ function dpRenderForm(isEdit){
   <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-users"></i>3 — Approval chain (4-eyes)</div><div style="background:${levelColor[lvl]||'#888'};color:#fff;padding:3px 10px;border-radius:6px;font-size:11px">Level ${lvl}</div></div>
   <div class="ib" style="margin-bottom:10px"><i class="ti ti-info-circle"></i> ${lvlHints[lvl]||''} · Writer ≠ Checker ≠ Approver per M02-02-04-01 R09 §6.2</div>
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-    <div class="fg"><label class="fl">Writer / Prepared by *</label>${inp('writer',f.writer,'Name or role acronym')}</div>
-    <div class="fg"><label class="fl">Checker / Verified by *</label>${inp('checker',f.checker,'Must differ from writer')}</div>
-    <div class="fg"><label class="fl">Approver *</label>${inp('approver',f.approver,'Must differ from checker')}</div>
+    <div class="fg"><label class="fl">Writer / Prepared by *</label>${empInp('writer',f.writer,'Name or role acronym')}</div>
+    <div class="fg"><label class="fl">Checker / Verified by *</label>${empInp('checker',f.checker,'Must differ from writer')}</div>
+    <div class="fg"><label class="fl">Approver *</label>${empInp('approver',f.approver,'Must differ from checker')}</div>
   </div>
   ${isEdit?`<div style="margin-top:12px"><div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:8px">CURRENT SIGN-OFF STATUS</div>
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
@@ -2665,7 +2878,7 @@ function dpRenderForm(isEdit){
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr 2fr;gap:10px">
     <div class="fg"><label class="fl">Revision</label><input class="fi" type="text" value="${f.rev||'R00'}" readonly style="background:var(--s2)"></div>
     <div class="fg"><label class="fl">Date</label><input class="fi" type="text" value="${f.date||''}" readonly style="background:var(--s2)"></div>
-    <div class="fg"><label class="fl">Editor</label>${inp('_revEditor',f._revEditor||f.writer||'','Editor name')}</div>
+    <div class="fg"><label class="fl">Editor</label>${empInp('_revEditor',f._revEditor||f.writer||'','Editor name')}</div>
     <div class="fg"><label class="fl">Object of update *</label>${inp('_revObject',f._revObject||'','What changed in this revision?')}</div>
   </div>
   ${isEdit&&(f.revHistory||[]).length?`<div style="margin-top:10px"><div style="font-size:10px;color:var(--t2);font-weight:700;margin-bottom:6px">PREVIOUS REVISIONS</div>${[...(f.revHistory||[])].reverse().slice(0,3).map(r=>`<div style="font-size:11px;color:var(--t2);padding:3px 0">${r.rev} — ${r.date} — ${r.editor||'—'} — ${r.object}</div>`).join('')}${f.revHistory.length>3?`<div style="font-size:10px;color:var(--t3)">${f.revHistory.length-3} earlier revisions not shown</div>`:''}</div>`:''}
@@ -2779,15 +2992,20 @@ async function dpPersist(d){
 async function dpSign(id,role){
   const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(!d)return;
   const name=prompt('Sign off as '+role+'. Enter your full name to confirm:');if(!name)return;
-  if(!d.approvals)d.approvals={};
-  d.approvals[role]={signed:true,name,date:new Date().toISOString().split('T')[0]};
-  const sigCount=Object.values(d.approvals).filter(a=>a.signed).length;
-  if(sigCount>=3){if(d.status==='draft')d.status='in-review';else if(d.status==='in-review')d.status='approved';}
-  if(QMS_DOC_FORM&&QMS_DOC_FORM.id===id){if(!QMS_DOC_FORM.approvals)QMS_DOC_FORM.approvals={};QMS_DOC_FORM.approvals[role]={signed:true,name,date:new Date().toISOString().split('T')[0]};}
-  render();
-  await dpPersist(d);
+  const password=prompt('Enter your password to confirm this signature:');if(!password)return;
+  try{
+    const updated=await API.docSign(id,role,name,password);
+    Object.assign(d,updated);
+    if(QMS_DOC_FORM&&QMS_DOC_FORM.id===id)Object.assign(QMS_DOC_FORM,updated);
+    render();
+  }catch(err){ alert('Could not record signature: '+err.message); }
 }
-async function dpApproveDoc(id){const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(!d)return;d.status='approved';render();await dpPersist(d);}
+async function dpApproveDoc(id){
+  const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(!d)return;
+  const password=prompt('Enter your password to confirm marking this document Approved:');if(!password)return;
+  try{ const updated=await API.docApprove(id,password); Object.assign(d,updated); render(); }
+  catch(err){ alert('Could not approve document: '+err.message); }
+}
 async function dpSubmitForReview(id){const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(!d)return;d.status='in-review';render();await dpPersist(d);}
 async function dpNewRevision(id){
   const d=QMS_DOCS_FLAT.find(x=>x.id===id);if(!d)return;

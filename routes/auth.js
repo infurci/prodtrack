@@ -38,7 +38,7 @@ router.post('/login', async (req, res) => {
       sameSite: 'lax',
       maxAge: 12 * 60 * 60 * 1000,
     });
-    res.json({ user: { username: user.username, role: user.role, full_name: user.full_name } });
+    res.json({ user: { id: user.id, username: user.username, role: user.role, full_name: user.full_name } });
   } catch (err) {
     console.error('Login error:', err.message);
     res.status(500).json({ error: 'Server error during login.' });
@@ -54,7 +54,7 @@ router.post('/logout', (req, res) => {
 // GET /api/auth/me  — used by the frontend on load to restore the session
 router.get('/me', requireAuth, (req, res) => {
   res.json({ user: {
-    username: req.user.username, role: req.user.role, full_name: req.user.full_name,
+    id: req.user.id, username: req.user.username, role: req.user.role, full_name: req.user.full_name,
   }});
 });
 
