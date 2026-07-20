@@ -129,3 +129,46 @@ CREATE TABLE IF NOT EXISTS employees (
 );
 
 CREATE INDEX IF NOT EXISTS idx_employees_active ON employees(active);
+
+-- ---------- DOA DOCUMENTS (DOA Processes Map) ----------
+-- Same feature set as controlled_documents (register, approval-chain
+-- signatures, revision history, PDF attachment storage) but scoped to the
+-- Design Organisation Approval / DAS Panel and using its own terminology
+-- (doc_no, owner/verified_by/approved_by, levels L1/L2/L3/VMF/VML).
+CREATE TABLE IF NOT EXISTS doa_documents (
+  id                        TEXT PRIMARY KEY,
+  doc_no                    TEXT NOT NULL,
+  level                     TEXT NOT NULL CHECK (level IN ('L1','L2','L3','VMF','VML')),
+  title                     TEXT NOT NULL,
+  rev                       TEXT NOT NULL DEFAULT 'A00',
+  status                    TEXT NOT NULL DEFAULT 'draft',
+  doc_date                  TEXT,
+  owner                     TEXT DEFAULT '',
+  verified_by               TEXT DEFAULT '',
+  approved_by               TEXT DEFAULT '',
+  storage                   TEXT DEFAULT '',
+  compliance                TEXT DEFAULT '',
+  description               TEXT DEFAULT '',
+  applicability             TEXT DEFAULT '',
+  approvals                 JSONB NOT NULL DEFAULT '{}'::jsonb,
+  rev_history               JSONB NOT NULL DEFAULT '[]'::jsonb,
+  tags                      JSONB NOT NULL DEFAULT '[]'::jsonb,
+  linked_docs               JSONB NOT NULL DEFAULT '[]'::jsonb,
+  attachment_original_name  TEXT,
+  attachment_stored_name    TEXT,
+  attachment_mime           TEXT,
+  attachment_size           INTEGER,
+  attachment_uploaded_at    TIMESTAMPTZ,
+  attachment_uploaded_by    INTEGER REFERENCES users(id),
+  created_by                INTEGER REFERENCES users(id),
+  created_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at                TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_doad_level  ON doa_documents(level);
+CREATE INDEX IF NOT EXISTS idx_doad_status ON doa_documents(status);
+
+DROP TRIGGER IF EXISTS trg_doad_touch ON doa_documents;
+CREATE TRIGGER trg_doad_touch
+  BEFORE UPDATE ON doa_documents
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();

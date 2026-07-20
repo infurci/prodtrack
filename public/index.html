@@ -371,6 +371,19 @@ const API = {
   updateEmployee(id,patch){ return this.req('PUT','/api/employees/'+encodeURIComponent(id),patch); },
   grantAccess(id,body){ return this.req('POST','/api/employees/'+encodeURIComponent(id)+'/access',body); },
   revokeAccess(id,password){ return this.req('DELETE','/api/employees/'+encodeURIComponent(id)+'/access',{password}); },
+  listDoaDocs(){ return this.req('GET','/api/doa-documents'); },
+  createDoaDoc(d){ return this.req('POST','/api/doa-documents',d); },
+  updateDoaDoc(id,d){ return this.req('PUT','/api/doa-documents/'+encodeURIComponent(id),d); },
+  async uploadDoaDocAttachment(id,file){
+    const fd=new FormData(); fd.append('file',file);
+    const r=await fetch('/api/doa-documents/'+encodeURIComponent(id)+'/attachment',{method:'POST',body:fd,credentials:'same-origin'});
+    let data=null; try{ data=await r.json(); }catch(e){}
+    if(!r.ok){ throw new Error((data&&data.error)||('Upload failed ('+r.status+')')); }
+    return data;
+  },
+  removeDoaDocAttachment(id){ return this.req('DELETE','/api/doa-documents/'+encodeURIComponent(id)+'/attachment'); },
+  doaDocSign(id,role,name,password){ return this.req('POST','/api/doa-documents/'+encodeURIComponent(id)+'/sign',{role,name,password}); },
+  doaDocApprove(id,password){ return this.req('POST','/api/doa-documents/'+encodeURIComponent(id)+'/approve',{password}); },
 };
 
 // Employee roster — powers name-autocomplete everywhere via a shared <datalist>.
@@ -469,6 +482,13 @@ async function bootData(){
     docs.forEach(d=>QMS_DOCS_FLAT.push(d));
   }catch(err){
     console.error('Failed to load controlled documents:', err.message);
+  }
+  try{
+    const doaDocs=await API.listDoaDocs();
+    DOA_DOCS_FLAT.length=0;
+    doaDocs.forEach(d=>DOA_DOCS_FLAT.push(d));
+  }catch(err){
+    console.error('Failed to load DOA documents:', err.message);
   }
   await refreshEmployeeAutocomplete();
   render();
@@ -3092,7 +3112,13 @@ function progressCAPA(id){const c=QMS_CAPAS.find(x=>x.id===id);if(c)c.status='in
    EASA Part-21 Subpart J — DOA EASA.21J.678
 ════════════════════════════════════════════════════════ */
 
-const DOAST = { sub: 'overview' };
+const DOAST = { sub: 'overview', doaDocForm:false, doaDocEdit:null, doaDocActive:null, doaDocFilterLevel:'all', doaDocFilterStatus:'all', doaDocSearch:'' };
+let DOA_DOCS_FLAT = [];
+let DOA_DOC_FORM = null;
+let DOA_DOC_PENDING_FILE = null;
+function doaBlankDoc(){
+  return {id:'DOA-'+Date.now(),docNo:'',level:'L3',title:'',rev:'A00',status:'draft',date:new Date().toISOString().split('T')[0],owner:'',verifiedBy:'',approvedBy:'',storage:'WM',compliance:'',description:'',applicability:'',approvals:{owner:{signed:false,name:'',date:''},verifiedBy:{signed:false,name:'',date:''},approvedBy:{signed:false,name:'',date:''}},revHistory:[{rev:'A00',date:new Date().toISOString().split('T')[0],editor:'',object:'Initial issue'}],tags:[],linkedDocs:[]};
+}
 
 // ── Configuration Items Register ──────────────────────────────
 let DOA_CIS = [
@@ -3203,6 +3229,12 @@ function vDOA(){
     ${subs.map(s=>`<button onclick="DOAST.sub='${s.k}';render()" style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:6px;border:1px solid ${DOAST.sub===s.k?'var(--acc)':'var(--bd)'};background:${DOAST.sub===s.k?'var(--acc)':'#fff'};color:${DOAST.sub===s.k?'#fff':'var(--t1)'};cursor:pointer;font-size:11px;font-weight:${DOAST.sub===s.k?'700':'500'}"><i class="ti ${s.icon}" style="font-size:13px"></i>${s.label}</button>`).join('')}
   </div>`;
 
+  if(DOAST.sub==='processes'){
+    if(DOAST.doaDocForm) return doaDocRenderForm(false);
+    if(DOAST.doaDocEdit) return doaDocRenderForm(true);
+    if(DOAST.doaDocActive) return doaDocRenderDetail(DOAST.doaDocActive);
+  }
+
   const openPRs=DOA_PRS.filter(p=>p.status!=='closed').length;
   const openECRs=DOA_ECRS.filter(e=>e.status==='in-review').length;
   const openFTWOs=DOA_FTWOS.filter(f=>f.status!=='closed').length;
@@ -3266,36 +3298,101 @@ function vDOA(){
     <div class="ib"><i class="ti ti-info-circle"></i> DOA EASA.21J.678 · Design Assurance System per VML-001-015 A01 · Change management per VMP-001-002 C00 · Flight test per VMI-042-004 A00</div>`;
   }
 
-  // ── DOA PROCESSES MAP ─────────────────────────────────────────
+  // ── DOA PROCESSES MAP (document register) ──────────────────────
   else if(DOAST.sub==='processes'){
-    const levels={L1:'Quality Manual / Handbook',L2:'Procedures (VMP)',L3:'Instructions (VMI)',VMF:'Forms / Templates (VMF)',VML:'Lists (VML)'};
-    const colors={L1:'var(--acc)',L2:'var(--blu)',L3:'#534AB7',VMF:'var(--grn)',VML:'#2d7a3a'};
-    const byLevel={};
-    DOA_PROCESSES.forEach(p=>{(byLevel[p.level]=byLevel[p.level]||[]).push(p);});
+    const levelDesc={L1:'Quality Manual / Handbook',L2:'Procedures (VMP)',L3:'Instructions (VMI)',VMF:'Forms / Templates (VMF)',VML:'Lists (VML)'};
+    const levelColor={L1:'var(--acc)',L2:'var(--blu)',L3:'#534AB7',VMF:'var(--grn)',VML:'#2d7a3a'};
+
+    let filtered=DOA_DOCS_FLAT.filter(d=>{
+      if(DOAST.doaDocFilterLevel!=='all'&&d.level!==DOAST.doaDocFilterLevel) return false;
+      if(DOAST.doaDocFilterStatus!=='all'&&d.status!==DOAST.doaDocFilterStatus) return false;
+      if(DOAST.doaDocSearch&&!JSON.stringify(d).toLowerCase().includes(DOAST.doaDocSearch.toLowerCase())) return false;
+      return true;
+    });
+
+    const total=DOA_DOCS_FLAT.length;
+    const draft=DOA_DOCS_FLAT.filter(d=>d.status==='draft').length;
+    const inReview=DOA_DOCS_FLAT.filter(d=>d.status==='in-review').length;
+    const approvedCt=DOA_DOCS_FLAT.filter(d=>d.status==='approved').length;
 
     content=`
-    <div class="ib" style="margin-bottom:10px"><i class="ti ti-info-circle"></i> DOA Processes Map per VML-001-015 A01. RASCI-V: <strong>R</strong>esponsible = Process Owner, <strong>A</strong>ccountable = HDO or COA, <strong>V</strong>erified = AE/COA, Informed = Key Stakeholders. Updated minimum quarterly per §8.</div>
-    ${Object.entries(levels).map(([lv,lbl])=>byLevel[lv]?`
-    <div class="card" style="border-left:3px solid ${colors[lv]||'#888'};margin-bottom:10px">
+    <div class="page-hdr" style="margin-bottom:10px">
+      <div>
+        <div class="page-title" style="font-size:14px">DOA Processes Map — Document Register</div>
+        <div style="font-size:11px;color:var(--t2)">VML-001-015 A01 · RASCI-V: <strong>R</strong>esponsible = Owner, <strong>A</strong>ccountable = HDO/COA, <strong>V</strong>erified = AE/COA · Updated minimum quarterly per §8</div>
+      </div>
+      <button class="btn btn-a" onclick="DOAST.doaDocForm=true;DOA_DOC_FORM=doaBlankDoc();DOA_DOC_PENDING_FILE=null;render()"><i class="ti ti-plus"></i>New document</button>
+    </div>
+
+    <div class="g4" style="margin-bottom:12px">
+      <div class="met"><div class="met-label">Total DOA documents</div><div class="met-val" style="color:var(--acc)">${total}</div></div>
+      <div class="met"><div class="met-label">Approved</div><div class="met-val" style="color:var(--grn)">${approvedCt}</div></div>
+      <div class="met"><div class="met-label">In review</div><div class="met-val" style="color:var(--amb)">${inReview}</div><div class="met-sub">pending sign-off</div></div>
+      <div class="met"><div class="met-label">Draft</div><div class="met-val" style="color:var(--t2)">${draft}</div></div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+      <div style="position:relative;flex:1;min-width:180px">
+        <i class="ti ti-search" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--t2)"></i>
+        <input type="text" placeholder="Search doc no., title, owner, tag…" value="${DOAST.doaDocSearch||''}"
+          oninput="DOAST.doaDocSearch=this.value;render()"
+          style="width:100%;padding:6px 10px 6px 30px;border:1px solid var(--bd);border-radius:6px;font-size:12px;background:#fff">
+      </div>
+      <select onchange="DOAST.doaDocFilterLevel=this.value;render()" style="padding:6px 10px;border:1px solid var(--bd);border-radius:6px;font-size:12px;background:#fff">
+        <option value="all" ${DOAST.doaDocFilterLevel==='all'?'selected':''}>All levels</option>
+        ${Object.keys(levelDesc).map(l=>`<option value="${l}" ${DOAST.doaDocFilterLevel===l?'selected':''}>${l} — ${levelDesc[l].split(' (')[0].split(' /')[0]}</option>`).join('')}
+      </select>
+      <select onchange="DOAST.doaDocFilterStatus=this.value;render()" style="padding:6px 10px;border:1px solid var(--bd);border-radius:6px;font-size:12px;background:#fff">
+        <option value="all" ${DOAST.doaDocFilterStatus==='all'?'selected':''}>All statuses</option>
+        ${QMS_DOC_STATUSES.map(s=>`<option value="${s}" ${DOAST.doaDocFilterStatus===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+      <span style="font-size:11px;color:var(--t2)">${filtered.length} result${filtered.length!==1?'s':''}</span>
+    </div>
+
+    <div class="ib" style="margin-bottom:10px"><i class="ti ti-info-circle"></i> RASCI-V: <strong>R</strong>esponsible = Process Owner, <strong>A</strong>ccountable = HDO or COA, <strong>V</strong>erified = AE/COA, Informed = Key Stakeholders.</div>
+
+    ${Object.entries(levelDesc).map(([lv,lbl])=>{
+      const lvDocs=filtered.filter(d=>d.level===lv);
+      if(!lvDocs.length) return '';
+      return `<div class="card" style="border-left:3px solid ${levelColor[lv]||'#888'};margin-bottom:10px">
       <div class="card-hdr">
-        <div class="card-title"><span style="background:${colors[lv]||'#888'};color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;margin-right:6px">${lv}</span>${lbl}</div>
-        <span class="bdg b-gy">${byLevel[lv].length}</span>
+        <div class="card-title"><span style="background:${levelColor[lv]||'#888'};color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;margin-right:6px">${lv}</span>${lbl}</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="bdg b-gy">${lvDocs.length}</span>
+          <button class="btn btn-s btn-a" onclick="DOAST.doaDocForm=true;DOA_DOC_FORM={...doaBlankDoc(),level:'${lv}'};DOA_DOC_PENDING_FILE=null;render()" style="font-size:10px"><i class="ti ti-plus"></i>Add ${lv}</button>
+        </div>
       </div>
       <table class="tbl"><thead><tr>
-        <th style="width:100px">Doc No.</th><th style="width:35px">Rev</th><th>Title</th><th style="width:80px">Owner</th><th style="width:60px">Verified</th><th style="width:60px">Approved</th><th style="width:60px">Storage</th><th style="width:120px">Compliance Ref.</th>
+        <th style="width:100px">Doc No.</th><th style="width:35px">Rev</th><th>Title</th><th style="width:75px">Status</th><th style="width:80px">Owner</th><th style="width:75px">Approvals</th><th style="width:70px">Actions</th>
       </tr></thead><tbody>
-      ${byLevel[lv].map(p=>`<tr>
-        <td style="font-size:10px;font-weight:700;color:var(--t2)">${p.docNo}</td>
-        <td style="font-size:11px;text-align:center;color:var(--t2)">${p.rev}</td>
-        <td style="font-size:12px;font-weight:500;white-space:normal;line-height:1.3">${p.title}</td>
-        <td style="font-size:10px;color:var(--t2)">${p.owner}</td>
-        <td style="font-size:10px;color:var(--t2)">${p.verifiedBy}</td>
-        <td style="font-size:10px;color:var(--t2)">${p.approvedBy}</td>
-        <td style="font-size:10px;color:var(--t2)">${p.storage}</td>
-        <td style="font-size:10px;color:var(--t2);white-space:normal;line-height:1.3">${p.compliance}</td>
-      </tr>`).join('')}
+      ${lvDocs.map(d=>{
+        const sigCount=Object.values(d.approvals||{}).filter(a=>a.signed).length;
+        const sigTotal=Object.keys(d.approvals||{}).length||3;
+        return `<tr class="cl" onclick="DOAST.doaDocActive='${d.id}';render()">
+        <td style="font-size:10px;font-weight:700;color:var(--t2)">${d.docNo}${d.attachmentName?` <i class="ti ti-file-type-pdf" style="color:var(--red)" title="PDF attached"></i>`:''}</td>
+        <td style="font-size:11px;text-align:center;color:var(--t2)">${d.rev}</td>
+        <td style="font-size:12px;font-weight:500;white-space:normal;line-height:1.3">${d.title} ${(d.tags||[]).map(t=>`<span class="chip" style="font-size:9px;margin-left:3px">${t}</span>`).join('')}</td>
+        <td>${stBdg(d.status)}</td>
+        <td style="font-size:10px;color:var(--t2)">${d.owner||'—'}</td>
+        <td>
+          <div style="font-size:10px;font-weight:700;color:${sigCount>=sigTotal?'var(--grn)':'var(--amb)'}">${sigCount}/${sigTotal}</div>
+          <div style="background:var(--s3);border-radius:3px;height:4px;margin-top:2px;overflow:hidden">
+            <div style="background:${sigCount>=sigTotal?'var(--grn)':'var(--amb)'};width:${sigTotal?Math.round(sigCount/sigTotal*100):0}%;height:100%"></div>
+          </div>
+        </td>
+        <td onclick="event.stopPropagation()">
+          <div style="display:flex;gap:4px">
+            <button class="btn btn-s" title="Edit" onclick="DOAST.doaDocEdit='${d.id}';DOA_DOC_FORM=JSON.parse(JSON.stringify(DOA_DOCS_FLAT.find(x=>x.id==='${d.id}')));DOA_DOC_PENDING_FILE=null;render()" style="padding:3px 6px"><i class="ti ti-pencil"></i></button>
+            <button class="btn btn-s" title="New revision" onclick="doaDocNewRevision('${d.id}')" style="padding:3px 6px"><i class="ti ti-refresh"></i></button>
+            ${d.status!=='obsolete'?`<button class="btn btn-s" title="Mark obsolete" onclick="doaDocObsolete('${d.id}')" style="padding:3px 6px;color:var(--red)"><i class="ti ti-archive"></i></button>`:''}
+          </div>
+        </td>
+      </tr>`;
+      }).join('')}
       </tbody></table>
-    </div>`:'').join('')}`;
+    </div>`;
+    }).join('')}
+    ${!filtered.length?`<div class="card" style="text-align:center;padding:24px;color:var(--t3)"><i class="ti ti-sitemap" style="font-size:28px"></i><p style="font-size:12px;margin-top:7px">${DOA_DOCS_FLAT.length?'No documents match your filters.':'No DOA documents yet — add the first one above.'}</p></div>`:''}`;
   }
 
   // ── CI / EBoM ─────────────────────────────────────────────────
@@ -3601,6 +3698,254 @@ function vDOA(){
   ${subNav}
   ${content}`;
 }
+
+/* ════════════════════════════════════════════
+   DOA PROCESSES MAP — DOCUMENT DETAIL / FORM / ACTIONS
+   Same feature set as the QMS Document Pyramid (dp* functions above),
+   adapted to DOA's own terminology and levels.
+════════════════════════════════════════════ */
+function doaDocRenderDetail(id){
+  const d=DOA_DOCS_FLAT.find(x=>x.id===id);if(!d)return '<div>Not found</div>';
+  const levelColor={L1:'var(--acc)',L2:'var(--blu)',L3:'#534AB7',VMF:'var(--grn)',VML:'#2d7a3a'};
+  const sigCount=Object.values(d.approvals||{}).filter(a=>a.signed).length;
+  const sigTotal=Object.keys(d.approvals||{}).length||3;
+  const allSigned=sigCount>=sigTotal;
+  const approvalKeys=['owner','verifiedBy','approvedBy'];
+  const approvalLabels={owner:'Owner / Prepared by',verifiedBy:'Verified by',approvedBy:'Approved by'};
+  return `
+  <div class="page-hdr" style="margin-bottom:10px"><div>
+    <button class="btn btn-s" onclick="DOAST.doaDocActive=null;render()" style="margin-bottom:6px"><i class="ti ti-arrow-left"></i>Back</button>
+    <div class="page-title">${d.docNo||d.id} — ${d.title}</div>
+    <div style="font-size:11px;color:var(--t2);margin-top:2px"><span style="background:${levelColor[d.level]||'#888'};color:#fff;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:700;margin-right:6px">${d.level}</span>${d.compliance||'—'} · Owner: ${d.owner||'—'}</div>
+  </div><div style="display:flex;gap:6px;align-items:center">
+    ${stBdg(d.status)}
+    <button class="btn btn-s" onclick="DOAST.doaDocEdit='${d.id}';DOA_DOC_FORM=JSON.parse(JSON.stringify(DOA_DOCS_FLAT.find(x=>x.id==='${d.id}')));DOA_DOC_PENDING_FILE=null;render()"><i class="ti ti-pencil"></i>Edit</button>
+    <button class="btn btn-s" onclick="doaDocNewRevision('${d.id}')"><i class="ti ti-refresh"></i>New revision</button>
+  </div></div>
+  <div class="g4" style="margin-bottom:12px">${[['Doc no.',d.docNo||d.id],['Revision',d.rev||'—'],['Issue date',d.date||'—'],['Storage',d.storage||'—']].map(([l,v])=>`<div style="background:var(--s2);border-radius:8px;padding:8px 10px"><div style="font-size:10px;color:var(--t2)">${l}</div><div style="font-size:12px;font-weight:700">${v}</div></div>`).join('')}</div>
+  ${d.attachmentName?`<div class="card" style="margin-bottom:12px;padding:10px 14px;display:flex;align-items:center;gap:10px">
+    <i class="ti ti-file-type-pdf" style="font-size:20px;color:var(--red)"></i>
+    <div style="flex:1"><div style="font-size:12px;font-weight:600">${d.attachmentName}</div><div style="font-size:10px;color:var(--t2)">${dpFmtBytes(d.attachmentSize)}${d.attachmentUploadedAt?' · uploaded '+String(d.attachmentUploadedAt).split('T')[0]:''}</div></div>
+    <a class="btn btn-s btn-a" href="/api/doa-documents/${encodeURIComponent(d.id)}/attachment" target="_blank" rel="noopener"><i class="ti ti-eye"></i>View PDF</a>
+  </div>`:`<div class="ib" style="margin-bottom:12px"><i class="ti ti-alert-circle"></i> No PDF attached yet. <button class="btn btn-s" onclick="DOAST.doaDocEdit='${d.id}';DOA_DOC_FORM=JSON.parse(JSON.stringify(DOA_DOCS_FLAT.find(x=>x.id==='${d.id}')));DOA_DOC_PENDING_FILE=null;render()">Attach now</button></div>`}
+  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-file-description"></i>Scope &amp; applicability</div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div>
+    <div style="font-size:10px;color:var(--t2);margin-bottom:4px">DESCRIPTION</div><div style="font-size:12px;line-height:1.6">${d.description||'—'}</div>
+  </div><div>
+    <div style="font-size:10px;color:var(--t2);margin-bottom:4px">APPLICABILITY</div><div style="font-size:12px;line-height:1.6">${d.applicability||'—'}</div>
+    <div style="font-size:10px;color:var(--t2);margin-top:10px;margin-bottom:4px">TAGS</div>
+    <div>${(d.tags||[]).map(t=>`<span class="chip" style="margin:2px">${t}</span>`).join('')||'—'}</div>
+    <div style="font-size:10px;color:var(--t2);margin-top:10px;margin-bottom:4px">LINKED DOCUMENTS</div>
+    <div>${(d.linkedDocs||[]).map(ld=>{const found=DOA_DOCS_FLAT.find(x=>x.id===ld);return `<span class="cl" onclick="DOAST.doaDocActive='${ld}';render()" style="display:inline-block;font-size:11px;color:var(--blu);cursor:pointer;margin-right:8px">${found?found.docNo||ld:ld}</span>`;}).join('')||'—'}</div>
+    <div style="font-size:10px;color:var(--t2);margin-top:10px;margin-bottom:4px">COMPLIANCE REF.</div>
+    <div style="font-size:11px">${d.compliance||'—'}</div>
+  </div></div></div>
+  <div class="card" style="border:2px solid ${allSigned?'var(--grn)':'var(--bd)'}">
+    <div class="card-hdr"><div class="card-title"><i class="ti ti-writing"></i>Approval chain — ${sigCount}/${sigTotal} signed</div>
+    <div style="background:var(--s3);border-radius:6px;height:8px;width:180px;overflow:hidden"><div style="background:${allSigned?'var(--grn)':'var(--acc)'};width:${sigTotal?Math.round(sigCount/sigTotal*100):0}%;height:100%"></div></div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+    ${approvalKeys.map((k,idx)=>{const a=(d.approvals||{})[k]||{signed:false,name:'',date:''};const prevSigned=idx===0||approvalKeys.slice(0,idx).every(pk=>(d.approvals||{})[pk]?.signed);const canSign=prevSigned&&!a.signed&&canApprove();return `<div style="border:1px solid ${a.signed?'var(--grn)':'var(--bd)'};border-radius:8px;padding:12px;background:${a.signed?'#F0FFF4':'#fff'}"><div style="font-size:9px;font-weight:700;color:var(--t2);text-transform:uppercase;margin-bottom:4px">${approvalLabels[k]}</div><div style="font-size:10px;color:var(--t2);margin-bottom:6px">Assigned: <strong>${k==='owner'?d.owner:k==='verifiedBy'?d.verifiedBy:d.approvedBy||'—'}</strong></div>${a.signed?`<div style="color:var(--grn);font-size:13px;font-weight:700">✓ ${a.name}</div><div style="font-size:10px;color:var(--t2)">${a.date}</div>`:`<div style="color:var(--t3);font-size:12px">Awaiting signature</div>${canSign?`<button class="btn btn-s btn-g" style="margin-top:8px;width:100%" onclick="doaDocSign('${d.id}','${k}')"><i class="ti ti-pencil"></i>Sign off</button>`:`<div style="font-size:10px;color:var(--t3);margin-top:4px">${prevSigned?'Your action needed':'Awaiting prior signatures'}</div>`}`}</div>`;}).join('')}
+    </div>
+    ${allSigned&&d.status==='in-review'?`<div style="margin-top:10px"><button class="btn btn-g" onclick="doaDocApproveDoc('${d.id}')"><i class="ti ti-check"></i>Mark Approved — all signatures collected</button></div>`:''}
+    ${allSigned&&d.status==='draft'?`<div style="margin-top:10px"><button class="btn btn-g" onclick="doaDocSubmitForReview('${d.id}')"><i class="ti ti-send"></i>Submit for review</button></div>`:''}
+  </div>
+  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-history"></i>Revision history</div><span class="bdg b-gy">${(d.revHistory||[]).length} revisions</span></div>
+  ${(d.revHistory||[]).length?`<table class="tbl"><thead><tr><th style="width:55px">Rev</th><th style="width:90px">Date</th><th style="width:90px">Editor</th><th>Object of the update</th></tr></thead><tbody>
+  ${[...(d.revHistory||[])].reverse().map((r,i)=>`<tr style="${i===0?'font-weight:600':''}"><td style="font-size:11px">${r.rev}</td><td style="font-size:11px;color:var(--t2)">${r.date}</td><td style="font-size:11px;color:var(--t2)">${r.editor||'—'}</td><td style="font-size:12px;white-space:normal;line-height:1.3">${r.object}</td></tr>`).join('')}
+  </tbody></table>`:
+  `<div style="text-align:center;padding:16px;color:var(--t3);font-size:12px">No revision history recorded yet</div>`}
+  ${canApprove()&&(d.status==='draft'||d.status==='in-review')?`<div style="margin-top:10px"><button class="btn btn-s" onclick="doaDocAddRevNote('${d.id}')"><i class="ti ti-plus"></i>Add revision note</button></div>`:''}
+  </div>`;
+}
+
+function doaDocRenderForm(isEdit){
+  const f=DOA_DOC_FORM;if(!f)return '<div>No form data</div>';
+  const inp=(path,val,ph,type)=>`<input class="fi" type="${type||'text'}" placeholder="${ph||''}" value="${val||''}" oninput="doaDocFormSet('${path}',this.value)">`;
+  const empInp=(path,val,ph)=>`<input class="fi" type="text" list="emp-list" placeholder="${ph||''}" value="${val||''}" oninput="doaDocFormSet('${path}',this.value)">`;
+  const sel=(path,opts,val)=>`<select class="fi" onchange="doaDocFormSet('${path}',this.value)">${opts.map(o=>`<option value="${o}" ${o===val?'selected':''}>${o}</option>`).join('')}</select>`;
+  const ta=(path,val,ph,rows)=>`<textarea class="fi" rows="${rows||3}" placeholder="${ph||''}" oninput="doaDocFormSet('${path}',this.value)">${val||''}</textarea>`;
+  const levelColor={L1:'var(--acc)',L2:'var(--blu)',L3:'#534AB7',VMF:'var(--grn)',VML:'#2d7a3a'};
+  const lvl=f.level||'L3';
+  const levelLabels={L1:'L1 — Quality Manual / Handbook',L2:'L2 — Procedure (VMP)',L3:'L3 — Instruction (VMI)',VMF:'VMF — Form / Template',VML:'VML — List'};
+  return `
+  <div class="page-hdr" style="margin-bottom:12px"><div>
+    <button class="btn btn-s" onclick="${isEdit?`DOAST.doaDocEdit=null;DOA_DOC_FORM=null;DOA_DOC_PENDING_FILE=null;DOAST.doaDocActive='${f.id}';render()`:'DOAST.doaDocForm=false;DOA_DOC_FORM=null;DOA_DOC_PENDING_FILE=null;render()'}" style="margin-bottom:6px"><i class="ti ti-x"></i>Cancel</button>
+    <div class="page-title">${isEdit?'Edit document — '+f.docNo:'New DOA document'}</div>
+    <div style="font-size:11px;color:var(--t2)">EASA Part-21 Subpart J · VML-001-015 A01</div>
+  </div><button class="btn btn-g" onclick="doaDocSaveForm(${isEdit})"><i class="ti ti-check"></i>${isEdit?'Save changes':'Create document'}</button></div>
+
+  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-file-type-pdf"></i>Document (PDF)</div></div>
+  ${doaAttachmentBlock(f)}
+  </div>
+
+  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-id"></i>1 — Document identification</div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+    <div class="fg"><label class="fl">Document number *</label>${inp('docNo',f.docNo,'e.g. VMP-001-002')}</div>
+    <div class="fg"><label class="fl">Document title *</label>${inp('title',f.title,'Full descriptive title')}</div>
+    <div class="fg"><label class="fl">Level *</label><select class="fi" onchange="doaDocFormSet('level',this.value);render()">${Object.entries(levelLabels).map(([lv,lbl])=>`<option value="${lv}" ${lv===f.level?'selected':''}>${lbl}</option>`).join('')}</select></div>
+    <div class="fg"><label class="fl">Revision *</label>${inp('rev',f.rev,'A00')}</div>
+    <div class="fg"><label class="fl">Status *</label>${sel('status',QMS_DOC_STATUSES,f.status)}</div>
+    <div class="fg"><label class="fl">Issue date *</label>${inp('date',f.date,'','date')}</div>
+    <div class="fg"><label class="fl">Compliance ref.</label>${inp('compliance',f.compliance,'e.g. 21.A.31, 21.A.239')}</div>
+    <div class="fg"><label class="fl">Storage location</label>${inp('storage',f.storage,'WM')}</div>
+    <div class="fg"><label class="fl">Tags (comma-separated)</label>${inp('_tagsStr',(f.tags||[]).join(', '),'Configuration, Flight Test')}</div>
+    <div class="fg"><label class="fl">Linked document numbers (comma-separated)</label>${inp('_linkedDocsStr',(f.linkedDocs||[]).join(', '),'VMP-001-002, VMF-001-011')}</div>
+  </div></div>
+
+  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-file-description"></i>2 — Scope &amp; applicability</div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div class="fg"><label class="fl">Document description *</label>${ta('description',f.description,'What does this document cover? What process does it govern?',4)}</div>
+    <div class="fg"><label class="fl">Area of applicability *</label>${ta('applicability',f.applicability,'Who must follow this? Which departments/processes?',4)}</div>
+  </div></div>
+
+  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-users"></i>3 — Approval chain (RASCI-V)</div><div style="background:${levelColor[lvl]||'#888'};color:#fff;padding:3px 10px;border-radius:6px;font-size:11px">Level ${lvl}</div></div>
+  <div class="ib" style="margin-bottom:10px"><i class="ti ti-info-circle"></i> Responsible = Owner, Accountable = HDO/COA, Verified = AE/COA · Owner ≠ Verifier ≠ Approver per VMP-001-002 §6.2</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+    <div class="fg"><label class="fl">Owner / Prepared by *</label>${empInp('owner',f.owner,'Name or role acronym')}</div>
+    <div class="fg"><label class="fl">Verified by *</label>${empInp('verifiedBy',f.verifiedBy,'Must differ from owner')}</div>
+    <div class="fg"><label class="fl">Approved by *</label>${empInp('approvedBy',f.approvedBy,'Must differ from verifier')}</div>
+  </div>
+  ${isEdit?`<div style="margin-top:12px"><div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:8px">CURRENT SIGN-OFF STATUS</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+  ${['owner','verifiedBy','approvedBy'].map(k=>{const a=(f.approvals||{})[k]||{signed:false,name:'',date:''};return `<div style="border:1px solid ${a.signed?'var(--grn)':'var(--bd)'};border-radius:8px;padding:10px;background:${a.signed?'#F0FFF4':'#fff'}"><div style="font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase">${k}</div>${a.signed?`<div style="color:var(--grn);font-size:12px;font-weight:700;margin-top:4px">✓ ${a.name}</div><div style="font-size:10px;color:var(--t2)">${a.date}</div>`:`<div style="color:var(--t3);font-size:12px;margin-top:4px">Not yet signed</div>${canApprove()?`<button class="btn btn-s btn-g" style="margin-top:6px" onclick="doaDocSign('${f.id}','${k}')"><i class="ti ti-pencil"></i>Sign off</button>`:''}`}</div>`;}).join('')}
+  </div></div>`:''}
+  </div>
+
+  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-history"></i>4 — Revision entry</div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 2fr;gap:10px">
+    <div class="fg"><label class="fl">Revision</label><input class="fi" type="text" value="${f.rev||'A00'}" readonly style="background:var(--s2)"></div>
+    <div class="fg"><label class="fl">Date</label><input class="fi" type="text" value="${f.date||''}" readonly style="background:var(--s2)"></div>
+    <div class="fg"><label class="fl">Editor</label>${empInp('_revEditor',f._revEditor||f.owner||'','Editor name')}</div>
+    <div class="fg"><label class="fl">Object of update *</label>${inp('_revObject',f._revObject||'','What changed in this revision?')}</div>
+  </div>
+  ${isEdit&&(f.revHistory||[]).length?`<div style="margin-top:10px"><div style="font-size:10px;color:var(--t2);font-weight:700;margin-bottom:6px">PREVIOUS REVISIONS</div>${[...(f.revHistory||[])].reverse().slice(0,3).map(r=>`<div style="font-size:11px;color:var(--t2);padding:3px 0">${r.rev} — ${r.date} — ${r.editor||'—'} — ${r.object}</div>`).join('')}${f.revHistory.length>3?`<div style="font-size:10px;color:var(--t3)">${f.revHistory.length-3} earlier revisions not shown</div>`:''}</div>`:''}
+  </div>
+
+  <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
+    <button class="btn" onclick="${isEdit?`DOAST.doaDocEdit=null;DOA_DOC_FORM=null;DOA_DOC_PENDING_FILE=null;DOAST.doaDocActive='${f.id}';render()`:'DOAST.doaDocForm=false;DOA_DOC_FORM=null;DOA_DOC_PENDING_FILE=null;render()'}">Cancel</button>
+    <button class="btn btn-g" onclick="doaDocSaveForm(${isEdit})"><i class="ti ti-check"></i>${isEdit?'Save changes':'Create DOA document'}</button>
+  </div>`;
+}
+
+function doaDocFormSet(path,val){if(!DOA_DOC_FORM)return;const parts=path.split('.');let obj=DOA_DOC_FORM;for(let i=0;i<parts.length-1;i++)obj=obj[parts[i]];obj[parts[parts.length-1]]=val;}
+
+// Stage a PDF chosen in the form — actual upload happens on save.
+function doaFileChosen(inputEl){
+  const file=inputEl.files&&inputEl.files[0];
+  if(!file)return;
+  const isPdf=file.type==='application/pdf'||/\.pdf$/i.test(file.name);
+  if(!isPdf){alert('Only PDF files can be attached as the document itself.');inputEl.value='';return;}
+  if(file.size>25*1024*1024){alert('PDF is too large (max 25 MB).');inputEl.value='';return;}
+  DOA_DOC_PENDING_FILE=file;
+  render();
+}
+function doaClearPendingFile(){DOA_DOC_PENDING_FILE=null;render();}
+
+async function doaRemoveAttachment(id){
+  if(!window.confirm('Remove the attached PDF from this DOA document?'))return;
+  try{
+    await API.removeDoaDocAttachment(id);
+    const patch={attachmentName:null,attachmentMime:null,attachmentSize:null,attachmentUploadedAt:null};
+    if(DOA_DOC_FORM&&DOA_DOC_FORM.id===id)Object.assign(DOA_DOC_FORM,patch);
+    const d=DOA_DOCS_FLAT.find(x=>x.id===id);if(d)Object.assign(d,patch);
+    render();
+  }catch(err){alert('Could not remove attachment: '+err.message);}
+}
+
+function doaAttachmentBlock(f){
+  if(DOA_DOC_PENDING_FILE){
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--acc);border-radius:8px;background:var(--s2)">
+      <i class="ti ti-file-type-pdf" style="font-size:22px;color:var(--acc)"></i>
+      <div style="flex:1"><div style="font-size:12px;font-weight:600">${DOA_DOC_PENDING_FILE.name}</div><div style="font-size:10px;color:var(--t2)">${dpFmtBytes(DOA_DOC_PENDING_FILE.size)} · will be uploaded on save</div></div>
+      <button type="button" class="btn btn-s" onclick="doaClearPendingFile()"><i class="ti ti-x"></i>Remove</button>
+    </div>`;
+  }
+  if(f.attachmentName){
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--bd);border-radius:8px">
+      <i class="ti ti-file-type-pdf" style="font-size:22px;color:var(--red)"></i>
+      <div style="flex:1"><div style="font-size:12px;font-weight:600">${f.attachmentName}</div><div style="font-size:10px;color:var(--t2)">${dpFmtBytes(f.attachmentSize)}${f.attachmentUploadedAt?' · uploaded '+String(f.attachmentUploadedAt).split('T')[0]:''}</div></div>
+      <a class="btn btn-s" href="/api/doa-documents/${encodeURIComponent(f.id)}/attachment" target="_blank" rel="noopener"><i class="ti ti-eye"></i>View</a>
+      <label class="btn btn-s" style="cursor:pointer">Replace<input type="file" accept="application/pdf,.pdf" style="display:none" onchange="doaFileChosen(this)"></label>
+      <button type="button" class="btn btn-s" style="color:var(--red)" onclick="doaRemoveAttachment('${f.id}')"><i class="ti ti-trash"></i>Remove</button>
+    </div>`;
+  }
+  return `<div class="fg">
+    <label class="fl">Attach the document (PDF)</label>
+    <input class="fi" type="file" accept="application/pdf,.pdf" onchange="doaFileChosen(this)">
+    <div style="font-size:10px;color:var(--t2);margin-top:4px">PDF only, max 25 MB — this becomes the stored controlled copy of the document itself.</div>
+  </div>`;
+}
+
+async function doaDocSaveForm(isEdit){
+  const f=DOA_DOC_FORM;if(!f)return;
+  if(!f.docNo){alert('Document number is required.');return;}
+  if(!f.title){alert('Document title is required.');return;}
+  if(!f.description){alert('Description is required.');return;}
+  if(!f.owner||!f.verifiedBy||!f.approvedBy){alert('Owner, Verifier and Approver must all be assigned.');return;}
+  const tagsEl=document.querySelector('[oninput*="_tagsStr"]');
+  const linkedEl=document.querySelector('[oninput*="_linkedDocsStr"]');
+  if(tagsEl)f.tags=tagsEl.value.split(',').map(s=>s.trim()).filter(Boolean);
+  if(linkedEl)f.linkedDocs=linkedEl.value.split(',').map(s=>s.trim()).filter(Boolean);
+  const revEditor=f._revEditor||f.owner;
+  const revObject=f._revObject||(isEdit?'Document updated':'Initial issue');
+  if(!f.revHistory)f.revHistory=[];
+  if(!f.revHistory.find(r=>r.rev===f.rev))f.revHistory.push({rev:f.rev,date:f.date||new Date().toISOString().split('T')[0],editor:revEditor,object:revObject});
+  delete f._revEditor;delete f._revObject;delete f._tagsStr;delete f._linkedDocsStr;
+  const payload=JSON.parse(JSON.stringify(f));
+  let saved;
+  try{
+    saved = isEdit ? await API.updateDoaDoc(f.id, payload) : await API.createDoaDoc(payload);
+  }catch(err){
+    alert('Could not save DOA document: '+err.message);
+    return;
+  }
+  if(DOA_DOC_PENDING_FILE){
+    try{ saved = await API.uploadDoaDocAttachment(saved.id, DOA_DOC_PENDING_FILE); }
+    catch(err){ alert('Document saved, but the PDF attachment failed to upload: '+err.message); }
+    DOA_DOC_PENDING_FILE=null;
+  }
+  if(isEdit){const idx=DOA_DOCS_FLAT.findIndex(x=>x.id===saved.id);if(idx>=0)DOA_DOCS_FLAT.splice(idx,1,saved);else DOA_DOCS_FLAT.push(saved);DOAST.doaDocEdit=null;}
+  else{DOA_DOCS_FLAT.push(saved);DOAST.doaDocForm=false;}
+  DOA_DOC_FORM=null;DOAST.doaDocActive=saved.id;
+  render();
+}
+// Persist an in-place document mutation to the server (mirrors dpPersist()).
+async function doaDocPersist(d){
+  try{ await API.updateDoaDoc(d.id, d); }
+  catch(err){ alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'); }
+}
+
+async function doaDocSign(id,role){
+  const d=DOA_DOCS_FLAT.find(x=>x.id===id);if(!d)return;
+  const name=prompt('Sign off as '+role+'. Enter your full name to confirm:');if(!name)return;
+  const password=prompt('Enter your password to confirm this signature:');if(!password)return;
+  try{
+    const updated=await API.doaDocSign(id,role,name,password);
+    Object.assign(d,updated);
+    if(DOA_DOC_FORM&&DOA_DOC_FORM.id===id)Object.assign(DOA_DOC_FORM,updated);
+    render();
+  }catch(err){ alert('Could not record signature: '+err.message); }
+}
+async function doaDocApproveDoc(id){
+  const d=DOA_DOCS_FLAT.find(x=>x.id===id);if(!d)return;
+  const password=prompt('Enter your password to confirm marking this document Approved:');if(!password)return;
+  try{ const updated=await API.doaDocApprove(id,password); Object.assign(d,updated); render(); }
+  catch(err){ alert('Could not approve document: '+err.message); }
+}
+async function doaDocSubmitForReview(id){const d=DOA_DOCS_FLAT.find(x=>x.id===id);if(!d)return;d.status='in-review';render();await doaDocPersist(d);}
+async function doaDocNewRevision(id){
+  const d=DOA_DOCS_FLAT.find(x=>x.id===id);if(!d)return;
+  const newRev=dpNextRevision(d.rev);
+  if(!window.confirm('Start new revision '+newRev+' of "'+d.title+'"?\n\nThis will:\n• Reset all approval signatures\n• Set status to draft\n• Preserve revision history\n\nProceed?'))return;
+  d.rev=newRev;d.status='draft';d.date=new Date().toISOString().split('T')[0];
+  d.approvals={owner:{signed:false,name:'',date:''},verifiedBy:{signed:false,name:'',date:''},approvedBy:{signed:false,name:'',date:''}};
+  if(!d.revHistory)d.revHistory=[];
+  d.revHistory.push({rev:newRev,date:d.date,editor:ST.role,object:'New revision — object TBD'});
+  DOAST.doaDocActive=id;render();
+  await doaDocPersist(d);
+}
+async function doaDocObsolete(id){const d=DOA_DOCS_FLAT.find(x=>x.id===id);if(!d)return;if(!window.confirm('Mark "'+d.title+'" as obsolete?'))return;d.status='obsolete';render();await doaDocPersist(d);}
+async function doaDocAddRevNote(id){const d=DOA_DOCS_FLAT.find(x=>x.id===id);if(!d)return;const note=prompt('Enter the object/reason for this revision entry:');if(!note)return;if(!d.revHistory)d.revHistory=[];d.revHistory.push({rev:d.rev,date:new Date().toISOString().split('T')[0],editor:ST.role,object:note});render();await doaDocPersist(d);}
 
 /* ── DOA stub actions ─────────────────────────────────────────── */
 function doaNewCI(){DOA_CIS.push({id:'CI-00'+(DOA_CIS.length+1),pn:'TBD',name:'New CI — complete form',type:'HW',status:'In Work',rev:'—',dal:'—',msn:'MSN001',owner:ST.role,valStatus:'Bench Testing',desc:''});render();}
