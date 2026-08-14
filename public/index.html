@@ -384,6 +384,9 @@ const API = {
   removeDoaDocAttachment(id){ return this.req('DELETE','/api/doa-documents/'+encodeURIComponent(id)+'/attachment'); },
   doaDocSign(id,role,name,password){ return this.req('POST','/api/doa-documents/'+encodeURIComponent(id)+'/sign',{role,name,password}); },
   doaDocApprove(id,password){ return this.req('POST','/api/doa-documents/'+encodeURIComponent(id)+'/approve',{password}); },
+  listWIs(){ return this.req('GET','/api/workinstructions'); },
+  createWI(wi){ return this.req('POST','/api/workinstructions',wi); },
+  updateWI(id,wi){ return this.req('PUT','/api/workinstructions/'+encodeURIComponent(id),wi); },
 };
 
 // Employee roster — powers name-autocomplete everywhere via a shared <datalist>.
@@ -490,6 +493,16 @@ async function bootData(){
   }catch(err){
     console.error('Failed to load DOA documents:', err.message);
   }
+  try{
+    const wis=await API.listWIs();
+    WIS.length=0;
+    wis.forEach(w=>WIS.push(w));
+  }catch(err){
+    console.error('Failed to load work instructions:', err.message);
+  }
+  // Once both WOs and WIs are loaded, make sure every WO's routing
+  // (order, steps, media) reflects its linked WI's current content.
+  WOS.forEach(syncWOOpsFromWI);
   await refreshEmployeeAutocomplete();
   render();
 }
@@ -561,6 +574,51 @@ const LIB={
 let _libUploads={};
 
 /* ════════════════════════════════════════════
+   WORK INSTRUCTIONS LIBRARY
+   WI-STD-001 is the standard generic routing template every Work Order
+   below is linked to (wiId) — its ops (order/steps/media) are the single
+   live source of truth for those WOs' routing.
+════════════════════════════════════════════ */
+const STD_WI_ID='WI-STD-001';
+let WIS=[
+  {id:STD_WI_ID,title:'Standard Composite Part Routing — Generic Template',partNo:'GENERIC',drawingNo:'—',rev:'A00',status:'released',lastEdit:new Date().toISOString().split('T')[0],author:'System',
+   ops:[
+    {id:1,seq:'05',name:'Mould preparation',type:'prep',dur:60,hazmat:false,steps:[],mats:[],media:[]},
+    {id:2,seq:'10',name:'Laminating',type:'laminating',dur:60,hazmat:false,steps:[],mats:[],media:[]},
+    {id:3,seq:'20',name:'De-bulk #1',type:'debulk',dur:60,hazmat:false,steps:[],mats:[],media:[]},
+    {id:4,seq:'30',name:'Laminating (cont.)',type:'laminating',dur:60,hazmat:false,steps:[],mats:[],media:[]},
+    {id:5,seq:'40',name:'De-bulk #2',type:'debulk',dur:60,hazmat:false,steps:[],mats:[],media:[]},
+    {id:6,seq:'150-QG',name:'QG — Pre-cure',type:'quality-gate',dur:60,hazmat:false,steps:[],mats:[],media:[]},
+    {id:7,seq:'150',name:'Curing',type:'curing',dur:60,hazmat:false,steps:[],mats:[],media:[]},
+    {id:8,seq:'160-QG',name:'QG — Final',type:'quality-gate',dur:60,hazmat:false,steps:[],mats:[],media:[]},
+    {id:9,seq:'160',name:'Trimming',type:'trimming',dur:60,hazmat:false,steps:[],mats:[],media:[]},
+    {id:10,seq:'INS',name:'Inspection',type:'inspection',dur:60,hazmat:false,steps:[],mats:[],media:[]},
+    {id:11,seq:'H&S',name:'Safety sign-off',type:'safety',dur:60,hazmat:false,steps:[],mats:[],media:[]},
+   ]},
+  {id:'WI-001',title:'Fwd Fuel Tank Bulkhead — Laminating & Trimming',partNo:'362-12120',drawingNo:'54-DP-000675',rev:'—',status:'released',lastEdit:'2024-06-10',author:'A. Bullan',
+   ops:[
+    {id:1,seq:'05',name:'Mould preparation',type:'prep',dur:60,hazmat:false,steps:['Ensure mould 362-12120-0MA00 is prepared to PS 11-002','Use dot-stickers to cover all holes','Inspect mould for damage or contamination'],mats:[],media:[]},
+    {id:2,seq:'10',name:'Laminating — plies 1–6 (surface film + carbon ±45)',type:'laminating',dur:90,hazmat:true,steps:['Refer to PS 11-000. Tolerance ±2 mm','Overlap 12–20 mm. No overlaps in hatched areas','Lay ply 1: Surface Film 124g @ ±45 (EL 16) — 1-493-4504601','Lay ply 2: Carbon 195g @ ±45 (EL 6) — 1-493-2954601','Trim all plies to net-edge'],mats:[{n:'Surface Film 124g',c:'1-493-4504601',sz:'EL 16',q:3,u:'ply',b:''},{n:'Carbon 195g @ ±45',c:'1-493-2954601',sz:'EL 6',q:3,u:'ply',b:''}],media:[]},
+    {id:3,seq:'20',name:'De-bulk #1',type:'debulk',dur:45,hazmat:false,steps:['Apply Release Film P3 (perforated)','Apply Dry Peel Ply 52008','Apply Breather 150g','Install vacuum bag','Seal. Pull vacuum. RETAIN DE-BULK'],mats:[],media:[]},
+    {id:4,seq:'150-QG',name:'QUALITY GATE — Pre-cure layup inspection',type:'quality-gate',dur:30,hazmat:false,steps:['QE must inspect and approve before cure','Verify ply count and sequence per drawing','Check all orientations — sign Route Sheet'],mats:[],media:[]},
+    {id:5,seq:'150',name:'Curing — vacuum bag & cycle',type:'curing',dur:480,hazmat:false,steps:['Cure per PS 11-001 section 4.4.1.1','Apply bagging materials per standard section','Install 1× Vacuum Valve and 1× Sensor Valve'],mats:[],media:[]},
+    {id:6,seq:'160-QG',name:'QUALITY GATE — Final inspection',type:'quality-gate',dur:60,hazmat:false,steps:['Qualified inspector only — SOI I-362-12120','Visual — no cracks, voids or delamination','Flange thickness 2 mm, 28× holes A, hole B 22 mm','Cut-out D 200×250 mm — reject if any check fails'],mats:[],media:[]},
+    {id:7,seq:'160',name:'Trimming — routing, drilling & de-flash',type:'trimming',dur:120,hazmat:false,steps:['De-bag part, leave in mould for routing','Rout using 1/4" cutter with 1/8" offset collar','Drill 28× holes 4.3 mm and 1× hole 1/4"','De-flash and de-burr — weigh and pass to inspection'],mats:[],media:[]},
+  ]},
+  {id:'WI-002',title:'Aft Fuselage Skin Panel — Laminating',partNo:'362-14200',drawingNo:'54-DP-000681',rev:'A',status:'released',lastEdit:'2024-06-11',author:'M. Santos',
+   ops:[
+    {id:1,seq:'05',name:'Mould preparation',type:'prep',dur:45,hazmat:false,steps:['Clean and inspect mould','Apply release agent per PS 11-002'],mats:[],media:[]},
+    {id:2,seq:'10',name:'Laminating — asymmetric layup',type:'laminating',dur:120,hazmat:true,steps:['Check fibre direction carefully — asymmetric layup','Lay plies per drawing 54-DP-000681','Overlap 12–20 mm'],mats:[],media:[]},
+    {id:3,seq:'150-QG',name:'QUALITY GATE — Pre-cure',type:'quality-gate',dur:30,hazmat:false,steps:['Verify layup orientation and ply count','QE sign-off required before cure'],mats:[],media:[]},
+    {id:4,seq:'150',name:'Curing',type:'curing',dur:480,hazmat:false,steps:['Cure per PS 11-001','Vacuum bag setup per standard section'],mats:[],media:[]},
+  ]},
+  {id:'WI-003',title:'Main Spar Web — Critical Laminate',partNo:'362-15010',drawingNo:'54-DP-000695',rev:'B',status:'draft',lastEdit:'2024-06-12',author:'C. Neves',
+   ops:[
+    {id:1,seq:'05',name:'Mould preparation',type:'prep',dur:60,hazmat:false,steps:['Critical primary structure — 100% mould inspection required','Document mould serial number on Route Sheet'],mats:[],media:[]},
+   ]},
+];
+
+/* ════════════════════════════════════════════
    BASE OPS TEMPLATE
 ════════════════════════════════════════════ */
 const BASE_OPS=[
@@ -599,10 +657,52 @@ const BASE_OPS=[
    mats:[],media:[]},
 ];
 
-function cloneOps(statuses){
-  return BASE_OPS.map((o,i)=>{
+// Builds the per-WO instance array (status/by/at/notes) for a routing.
+// Prefers the linked Work Instruction's current ops (so a brand-new WO
+// starts out already matching whatever the WI looks like right now);
+// falls back to the static BASE_OPS template before WIS has loaded.
+function cloneOps(statuses,wiId){
+  const wi=WIS.find(w=>w.id===(wiId||STD_WI_ID));
+  const src=wi?wi.ops:BASE_OPS;
+  return src.map((o,i)=>{
     const s=statuses[i]||'pending';
-    return{...JSON.parse(JSON.stringify(o)),id:Math.random(),status:s,by:s==='done'?'Operator':null,at:s==='done'?'—':null,notes:''};
+    const merged={...JSON.parse(JSON.stringify(o)),id:Math.random(),status:s,by:s==='done'?'Operator':null,at:s==='done'?'—':null,notes:''};
+    merged.wiOpId=o.id;
+    merged.qg=wi?(o.type==='quality-gate'):!!o.qg;
+    return merged;
+  });
+}
+
+// Re-syncs a WO's ops array from its linked Work Instruction: order, name,
+// type, duration, steps and media always come live from the WI; each op's
+// own status/by/at/notes (and material batch numbers) are preserved by
+// matching on wiOpId. Legacy WOs saved before this linking existed (no
+// wiOpId anywhere yet) get a one-time positional match so in-progress
+// status isn't lost the first time this runs.
+function syncWOOpsFromWI(wo){
+  const wi=WIS.find(w=>w.id===wo.wiId);
+  if(!wi||!wi.ops||!wi.ops.length)return;
+  const oldOps=wo.ops||[];
+  const byWiOpId={};
+  const bySeq={};
+  oldOps.forEach(o=>{
+    if(o.wiOpId!=null)byWiOpId[o.wiOpId]=o;
+    else if(o.seq!=null)bySeq[o.seq]=o; // one-time migration key for pre-existing WOs saved before WI-linking existed — seq is stable across reordering, unlike array position
+  });
+  wo.ops=wi.ops.map((wiOp)=>{
+    const inst=byWiOpId[wiOp.id]||bySeq[wiOp.seq];
+    const merged=JSON.parse(JSON.stringify(wiOp));
+    merged.wiOpId=wiOp.id;
+    merged.id=inst?inst.id:Math.random();
+    merged.status=inst?inst.status:'pending';
+    merged.by=inst?inst.by:null;
+    merged.at=inst?inst.at:null;
+    merged.notes=inst?inst.notes:'';
+    merged.qg=wiOp.type==='quality-gate';
+    if(inst&&inst.mats&&merged.mats){
+      merged.mats.forEach((m,mi)=>{ if(inst.mats[mi])m.b=inst.mats[mi].b||''; });
+    }
+    return merged;
   });
 }
 
@@ -610,45 +710,18 @@ function cloneOps(statuses){
    WORK ORDERS
 ════════════════════════════════════════════ */
 let WOS=[
-  {id:'WO-2024-001',component:'Fwd Fuel Tank Bulkhead',partNo:'362-12120',elbitPn:'54-10-00560-00',drawingNo:'54-DP-000675',batchNo:'B-2024-FTB-001',rev:'—',status:'in-progress',startDate:'2024-06-10',priority:'high',assignedTo:['A. Lima','T. Ribeiro'],hazmat:true,notes:'Resins — gloves mandatory at all times. PPE per H&S sheet p.3.',
+  {id:'WO-2024-001',component:'Fwd Fuel Tank Bulkhead',partNo:'362-12120',elbitPn:'54-10-00560-00',drawingNo:'54-DP-000675',batchNo:'B-2024-FTB-001',rev:'—',status:'in-progress',startDate:'2024-06-10',priority:'high',assignedTo:['A. Lima','T. Ribeiro'],hazmat:true,notes:'Resins — gloves mandatory at all times. PPE per H&S sheet p.3.',wiId:STD_WI_ID,
    ops:cloneOps(['done','done','done','done','in-progress','pending','pending','pending','pending','pending','pending'])},
-  {id:'WO-2024-002',component:'Aft Fuselage Skin Panel',partNo:'362-14200',elbitPn:'54-10-00581-00',drawingNo:'54-DP-000681',batchNo:'B-2024-AFS-002',rev:'A',status:'in-progress',startDate:'2024-06-11',priority:'high',assignedTo:['M. Santos'],hazmat:true,notes:'Check fibre direction carefully — asymmetric layup.',
+  {id:'WO-2024-002',component:'Aft Fuselage Skin Panel',partNo:'362-14200',elbitPn:'54-10-00581-00',drawingNo:'54-DP-000681',batchNo:'B-2024-AFS-002',rev:'A',status:'in-progress',startDate:'2024-06-11',priority:'high',assignedTo:['M. Santos'],hazmat:true,notes:'Check fibre direction carefully — asymmetric layup.',wiId:STD_WI_ID,
    ops:cloneOps(['done','done','in-progress','pending','pending','pending','pending','pending','pending','pending','pending'])},
-  {id:'WO-2024-003',component:'Main Spar Web — Centre Section',partNo:'362-15010',elbitPn:'54-10-00590-00',drawingNo:'54-DP-000695',batchNo:'B-2024-MSW-003',rev:'B',status:'quality-hold',startDate:'2024-06-09',priority:'critical',assignedTo:['C. Neves','R. Alves'],hazmat:true,notes:'Critical primary structure — 100% inspection required.',
+  {id:'WO-2024-003',component:'Main Spar Web — Centre Section',partNo:'362-15010',elbitPn:'54-10-00590-00',drawingNo:'54-DP-000695',batchNo:'B-2024-MSW-003',rev:'B',status:'quality-hold',startDate:'2024-06-09',priority:'critical',assignedTo:['C. Neves','R. Alves'],hazmat:true,notes:'Critical primary structure — 100% inspection required.',wiId:STD_WI_ID,
    ops:cloneOps(['done','done','done','done','done','done','quality-hold','pending','pending','pending','pending'])},
-  {id:'WO-2024-004',component:'Rudder Trailing Edge',partNo:'362-16400',elbitPn:'54-10-00602-00',drawingNo:'54-DP-000710',batchNo:'B-2024-RTE-004',rev:'—',status:'complete',startDate:'2024-06-07',priority:'normal',assignedTo:['P. Mota'],hazmat:false,notes:'',
+  {id:'WO-2024-004',component:'Rudder Trailing Edge',partNo:'362-16400',elbitPn:'54-10-00602-00',drawingNo:'54-DP-000710',batchNo:'B-2024-RTE-004',rev:'—',status:'complete',startDate:'2024-06-07',priority:'normal',assignedTo:['P. Mota'],hazmat:false,notes:'',wiId:STD_WI_ID,
    ops:cloneOps(['done','done','done','done','done','done','done','done','done','done','done'])},
-  {id:'WO-2024-005',component:'Elevator Skin — Upper',partNo:'362-17100',elbitPn:'54-10-00615-00',drawingNo:'54-DP-000722',batchNo:'B-2024-ESU-005',rev:'A',status:'pending',startDate:'2024-06-13',priority:'normal',assignedTo:[],hazmat:false,notes:'Awaiting mould release from WO-2024-004.',
+  {id:'WO-2024-005',component:'Elevator Skin — Upper',partNo:'362-17100',elbitPn:'54-10-00615-00',drawingNo:'54-DP-000722',batchNo:'B-2024-ESU-005',rev:'A',status:'pending',startDate:'2024-06-13',priority:'normal',assignedTo:[],hazmat:false,notes:'Awaiting mould release from WO-2024-004.',wiId:STD_WI_ID,
    ops:cloneOps([])},
-  {id:'WO-2024-006',component:'Wing Root Rib No.3',partNo:'362-18050',elbitPn:'54-10-00627-00',drawingNo:'54-DP-000735',batchNo:'B-2024-WRR-006',rev:'—',status:'pending',startDate:'2024-06-14',priority:'low',assignedTo:[],hazmat:false,notes:'',
+  {id:'WO-2024-006',component:'Wing Root Rib No.3',partNo:'362-18050',elbitPn:'54-10-00627-00',drawingNo:'54-DP-000735',batchNo:'B-2024-WRR-006',rev:'—',status:'pending',startDate:'2024-06-14',priority:'low',assignedTo:[],hazmat:false,notes:'',wiId:STD_WI_ID,
    ops:cloneOps([])},
-];
-
-/* ════════════════════════════════════════════
-   WORK INSTRUCTIONS LIBRARY
-════════════════════════════════════════════ */
-let WIS=[
-  {id:'WI-001',title:'Fwd Fuel Tank Bulkhead — Laminating & Trimming',partNo:'362-12120',drawingNo:'54-DP-000675',rev:'—',status:'released',lastEdit:'2024-06-10',author:'A. Bullan',
-   ops:[
-    {id:1,seq:'05',name:'Mould preparation',type:'prep',dur:60,hazmat:false,steps:['Ensure mould 362-12120-0MA00 is prepared to PS 11-002','Use dot-stickers to cover all holes','Inspect mould for damage or contamination'],mats:[],media:[]},
-    {id:2,seq:'10',name:'Laminating — plies 1–6 (surface film + carbon ±45)',type:'laminating',dur:90,hazmat:true,steps:['Refer to PS 11-000. Tolerance ±2 mm','Overlap 12–20 mm. No overlaps in hatched areas','Lay ply 1: Surface Film 124g @ ±45 (EL 16) — 1-493-4504601','Lay ply 2: Carbon 195g @ ±45 (EL 6) — 1-493-2954601','Trim all plies to net-edge'],mats:[{n:'Surface Film 124g',c:'1-493-4504601',sz:'EL 16',q:3,u:'ply',b:''},{n:'Carbon 195g @ ±45',c:'1-493-2954601',sz:'EL 6',q:3,u:'ply',b:''}],media:[]},
-    {id:3,seq:'20',name:'De-bulk #1',type:'debulk',dur:45,hazmat:false,steps:['Apply Release Film P3 (perforated)','Apply Dry Peel Ply 52008','Apply Breather 150g','Install vacuum bag','Seal. Pull vacuum. RETAIN DE-BULK'],mats:[],media:[]},
-    {id:4,seq:'150-QG',name:'QUALITY GATE — Pre-cure layup inspection',type:'quality-gate',dur:30,hazmat:false,steps:['QE must inspect and approve before cure','Verify ply count and sequence per drawing','Check all orientations — sign Route Sheet'],mats:[],media:[]},
-    {id:5,seq:'150',name:'Curing — vacuum bag & cycle',type:'curing',dur:480,hazmat:false,steps:['Cure per PS 11-001 section 4.4.1.1','Apply bagging materials per standard section','Install 1× Vacuum Valve and 1× Sensor Valve'],mats:[],media:[]},
-    {id:6,seq:'160-QG',name:'QUALITY GATE — Final inspection',type:'quality-gate',dur:60,hazmat:false,steps:['Qualified inspector only — SOI I-362-12120','Visual — no cracks, voids or delamination','Flange thickness 2 mm, 28× holes A, hole B 22 mm','Cut-out D 200×250 mm — reject if any check fails'],mats:[],media:[]},
-    {id:7,seq:'160',name:'Trimming — routing, drilling & de-flash',type:'trimming',dur:120,hazmat:false,steps:['De-bag part, leave in mould for routing','Rout using 1/4" cutter with 1/8" offset collar','Drill 28× holes 4.3 mm and 1× hole 1/4"','De-flash and de-burr — weigh and pass to inspection'],mats:[],media:[]},
-  ]},
-  {id:'WI-002',title:'Aft Fuselage Skin Panel — Laminating',partNo:'362-14200',drawingNo:'54-DP-000681',rev:'A',status:'released',lastEdit:'2024-06-11',author:'M. Santos',
-   ops:[
-    {id:1,seq:'05',name:'Mould preparation',type:'prep',dur:45,hazmat:false,steps:['Clean and inspect mould','Apply release agent per PS 11-002'],mats:[],media:[]},
-    {id:2,seq:'10',name:'Laminating — asymmetric layup',type:'laminating',dur:120,hazmat:true,steps:['Check fibre direction carefully — asymmetric layup','Lay plies per drawing 54-DP-000681','Overlap 12–20 mm'],mats:[],media:[]},
-    {id:3,seq:'150-QG',name:'QUALITY GATE — Pre-cure',type:'quality-gate',dur:30,hazmat:false,steps:['Verify layup orientation and ply count','QE sign-off required before cure'],mats:[],media:[]},
-    {id:4,seq:'150',name:'Curing',type:'curing',dur:480,hazmat:false,steps:['Cure per PS 11-001','Vacuum bag setup per standard section'],mats:[],media:[]},
-  ]},
-  {id:'WI-003',title:'Main Spar Web — Critical Laminate',partNo:'362-15010',drawingNo:'54-DP-000695',rev:'B',status:'draft',lastEdit:'2024-06-12',author:'C. Neves',
-   ops:[
-    {id:1,seq:'05',name:'Mould preparation',type:'prep',dur:60,hazmat:false,steps:['Critical primary structure — 100% mould inspection required','Document mould serial number on Route Sheet'],mats:[],media:[]},
-   ]},
 ];
 
 const GATES=[];
@@ -1104,6 +1177,15 @@ function openOpDetail(woId,opId){
     ${op.mats&&op.mats.length?`
     <div style="font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;margin:11px 0 7px">Materials</div>
     ${op.mats.map((m,mi)=>`<div class="mat-r"><i class="ti ti-package" style="font-size:14px;color:var(--t2)"></i><div style="flex:1"><div style="font-weight:700;font-size:11px">${m.n}</div><div style="font-size:10px;color:var(--t3)">${m.c} · ${m.sz} · ${m.q}${m.u}</div></div><input class="fi" style="width:110px;font-size:11px;padding:4px 7px" placeholder="Batch no." id="mb_${opId}_${mi}" value="${m.b}"></div>`).join('')}`:''}
+    ${op.media&&op.media.length?`
+    <div style="font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;margin:11px 0 7px">Reference media <span style="text-transform:none;font-weight:400;color:var(--t3)">— from the Work Instruction</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px">
+    ${op.media.map((m,mi)=>`<div style="border:1px solid var(--bd);border-radius:6px;padding:6px;text-align:center;cursor:pointer" onclick="previewMedia_op('${woId}','${opId}',${mi})">
+      ${m.src?(m.type==='video'?`<video src="${m.src}" style="max-width:100%;max-height:80px;border-radius:4px;display:block;margin:0 auto"></video>`:`<img src="${m.src}" alt="${(m.label||'').replace(/"/g,'&quot;')}" style="max-width:100%;max-height:80px;border-radius:4px;display:block;margin:0 auto">`)
+      :`<i class="ti ${m.type==='video'?'ti-video':'ti-photo'}" style="font-size:22px;display:block;margin-bottom:4px;color:var(--t3)"></i>`}
+      <div style="font-size:10px;color:var(--t2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.label||''}</div>
+    </div>`).join('')}
+    </div>`:''}
     <div style="margin-top:10px"><label class="fl">Notes / deviations</label><textarea class="fi" rows="2" placeholder="Observations…" id="on_${opId}" style="font-size:12px">${op.notes||''}</textarea></div>
     <div style="margin-top:7px"><label class="fl"><i class="ti ti-photo"></i> Attach photo</label><input type="file" accept="image/*" capture="environment" class="fi" style="padding:4px;font-size:11px"></div>
     <div style="background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--t2);margin-top:9px"><i class="ti ti-user-check"></i> Operator signature required to complete this operation.</div>
@@ -1393,15 +1475,36 @@ function previewMedia_dz(opId,mi){
     m.type==='video'?`<video src="${m.src}" controls style="width:100%;border-radius:6px"></video>`:`<img src="${m.src}" style="width:100%;border-radius:6px">`,
     `<button class="btn" onclick="mA_tryClose()">Close</button>`,'600px');
 }
+// Same full-size preview, opened from a Work Order's operation detail
+// (the media itself always comes live from the linked Work Instruction).
+function previewMedia_op(woId,opId,mi){
+  const wo=WOS.find(w=>w.id===woId);if(!wo)return;
+  const op=wo.ops.find(o=>String(o.id)===String(opId));if(!op)return;
+  const m=(op.media||[])[mi];if(!m||!m.src)return;
+  setA(`<div class="modal-title">${m.label||''}</div><button class="btn btn-s" onclick="openOpDetail('${woId}','${opId}')"><i class="ti ti-x"></i></button>`,
+    m.type==='video'?`<video src="${m.src}" controls style="width:100%;border-radius:6px"></video>`:`<img src="${m.src}" style="width:100%;border-radius:6px">`,
+    `<button class="btn" onclick="openOpDetail('${woId}','${opId}')">Back</button>`,'600px');
+}
 
 /* ── SAVE WI ── */
-function saveWI(){
+async function saveWI(){
   const wi=ST.editingWI;if(!wi)return;
   if(!wi.title.trim()||!wi.partNo.trim()){alert('Please fill in WI title and part number.');return;}
   wi.lastEdit=new Date().toISOString().split('T')[0];
-  const idx=WIS.findIndex(w=>w.id===wi.id);
-  if(idx>=0)WIS[idx]=JSON.parse(JSON.stringify(wi));
-  else WIS.push(JSON.parse(JSON.stringify(wi)));
+  const isNew=!WIS.find(w=>w.id===wi.id);
+  const payload=JSON.parse(JSON.stringify(wi));
+  let saved;
+  try{
+    saved = isNew ? await API.createWI(payload) : await API.updateWI(wi.id, payload);
+  }catch(err){
+    alert('Could not save work instruction: '+err.message);
+    return;
+  }
+  const idx=WIS.findIndex(w=>w.id===saved.id);
+  if(idx>=0)WIS.splice(idx,1,saved);else WIS.push(saved);
+  // Any Work Order following this WI needs its routing re-synced now —
+  // this is what makes reordered steps / attached media show up live.
+  WOS.forEach(syncWOOpsFromWI);
   closeModal('mB');ST.editingWI=null;render();
 }
 
@@ -1893,7 +1996,7 @@ function saveNewWO(editId){
     })();
   } else {
     var newId='WO-2024-'+String(WOS.length+1).padStart(3,'0');
-    var newWO=Object.assign({id:newId,status:'pending',ops:cloneOps([])},data);
+    var newWO=Object.assign({id:newId,status:'pending',wiId:STD_WI_ID,ops:cloneOps([])},data);
     WOS.push(newWO);
     saveWO(newWO,true);
     closeModal('mD');render();

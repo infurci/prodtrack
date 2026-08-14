@@ -172,3 +172,30 @@ DROP TRIGGER IF EXISTS trg_doad_touch ON doa_documents;
 CREATE TRIGGER trg_doad_touch
   BEFORE UPDATE ON doa_documents
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ---------- WORK INSTRUCTIONS ----------
+-- Each WI's `ops` is the single source of truth for its routing: operation
+-- names, order, steps and attached media. Work Orders link to a WI via
+-- work_orders.wi_id instead of keeping their own frozen copy, so editing a
+-- WI's steps/order/media here is immediately reflected in every Work Order
+-- that follows it — the per-WO status/by/at/notes stays on work_orders.ops.
+CREATE TABLE IF NOT EXISTS work_instructions (
+  id           TEXT PRIMARY KEY,
+  title        TEXT NOT NULL,
+  part_no      TEXT,
+  drawing_no   TEXT,
+  rev          TEXT DEFAULT '—',
+  status       TEXT NOT NULL DEFAULT 'draft',
+  author       TEXT DEFAULT '',
+  ops          JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_by   INTEGER REFERENCES users(id),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS trg_wi_touch ON work_instructions;
+CREATE TRIGGER trg_wi_touch
+  BEFORE UPDATE ON work_instructions
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS wi_id TEXT REFERENCES work_instructions(id);

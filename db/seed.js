@@ -34,13 +34,58 @@ const cloneOps = (states) => {
   }));
 };
 
+const STD_WI_ID = 'WI-STD-001';
+
 const WOS = [
-  { id:'WO-2024-001', component:'Fwd Fuel Tank Bulkhead', part_no:'362-12120', elbit_pn:'54-10-00560-00', drawing_no:'54-DP-000675', batch_no:'B-2024-FTB-001', rev:'—', status:'in-progress', start_date:'2024-06-10', priority:'high', assigned_to:['A. Lima','T. Ribeiro'], hazmat:true, notes:'Resins — gloves mandatory at all times. PPE per H&S sheet p.3.', ops:cloneOps(['done','done','done','done','in-progress','pending','pending','pending','pending','pending','pending']) },
-  { id:'WO-2024-002', component:'Aft Fuselage Skin Panel', part_no:'362-14200', elbit_pn:'54-10-00581-00', drawing_no:'54-DP-000681', batch_no:'B-2024-AFS-002', rev:'A', status:'in-progress', start_date:'2024-06-11', priority:'high', assigned_to:['M. Santos'], hazmat:true, notes:'Check fibre direction carefully — asymmetric layup.', ops:cloneOps(['done','done','in-progress','pending','pending','pending','pending','pending','pending','pending','pending']) },
-  { id:'WO-2024-003', component:'Main Spar Web — Centre Section', part_no:'362-15010', elbit_pn:'54-10-00590-00', drawing_no:'54-DP-000695', batch_no:'B-2024-MSW-003', rev:'B', status:'quality-hold', start_date:'2024-06-09', priority:'critical', assigned_to:['C. Neves','R. Alves'], hazmat:true, notes:'Critical primary structure — 100% inspection required.', ops:cloneOps(['done','done','done','done','done','done','quality-hold','pending','pending','pending','pending']) },
-  { id:'WO-2024-004', component:'Rudder Trailing Edge', part_no:'362-16400', elbit_pn:'54-10-00602-00', drawing_no:'54-DP-000710', batch_no:'B-2024-RTE-004', rev:'—', status:'complete', start_date:'2024-06-07', priority:'normal', assigned_to:['P. Mota'], hazmat:false, notes:'', ops:cloneOps(['done','done','done','done','done','done','done','done','done','done','done']) },
-  { id:'WO-2024-005', component:'Elevator Skin — Upper', part_no:'362-17100', elbit_pn:'54-10-00615-00', drawing_no:'54-DP-000722', batch_no:'B-2024-ESU-005', rev:'A', status:'pending', start_date:'2024-06-13', priority:'normal', assigned_to:[], hazmat:false, notes:'Awaiting mould release from WO-2024-004.', ops:cloneOps([]) },
-  { id:'WO-2024-006', component:'Wing Root Rib No.3', part_no:'362-18050', elbit_pn:'54-10-00627-00', drawing_no:'54-DP-000735', batch_no:'B-2024-WRR-006', rev:'—', status:'pending', start_date:'2024-06-14', priority:'low', assigned_to:[], hazmat:false, notes:'', ops:cloneOps([]) },
+  { id:'WO-2024-001', component:'Fwd Fuel Tank Bulkhead', part_no:'362-12120', elbit_pn:'54-10-00560-00', drawing_no:'54-DP-000675', batch_no:'B-2024-FTB-001', rev:'—', status:'in-progress', start_date:'2024-06-10', priority:'high', assigned_to:['A. Lima','T. Ribeiro'], hazmat:true, notes:'Resins — gloves mandatory at all times. PPE per H&S sheet p.3.', wi_id:STD_WI_ID, ops:cloneOps(['done','done','done','done','in-progress','pending','pending','pending','pending','pending','pending']) },
+  { id:'WO-2024-002', component:'Aft Fuselage Skin Panel', part_no:'362-14200', elbit_pn:'54-10-00581-00', drawing_no:'54-DP-000681', batch_no:'B-2024-AFS-002', rev:'A', status:'in-progress', start_date:'2024-06-11', priority:'high', assigned_to:['M. Santos'], hazmat:true, notes:'Check fibre direction carefully — asymmetric layup.', wi_id:STD_WI_ID, ops:cloneOps(['done','done','in-progress','pending','pending','pending','pending','pending','pending','pending','pending']) },
+  { id:'WO-2024-003', component:'Main Spar Web — Centre Section', part_no:'362-15010', elbit_pn:'54-10-00590-00', drawing_no:'54-DP-000695', batch_no:'B-2024-MSW-003', rev:'B', status:'quality-hold', start_date:'2024-06-09', priority:'critical', assigned_to:['C. Neves','R. Alves'], hazmat:true, notes:'Critical primary structure — 100% inspection required.', wi_id:STD_WI_ID, ops:cloneOps(['done','done','done','done','done','done','quality-hold','pending','pending','pending','pending']) },
+  { id:'WO-2024-004', component:'Rudder Trailing Edge', part_no:'362-16400', elbit_pn:'54-10-00602-00', drawing_no:'54-DP-000710', batch_no:'B-2024-RTE-004', rev:'—', status:'complete', start_date:'2024-06-07', priority:'normal', assigned_to:['P. Mota'], hazmat:false, notes:'', wi_id:STD_WI_ID, ops:cloneOps(['done','done','done','done','done','done','done','done','done','done','done']) },
+  { id:'WO-2024-005', component:'Elevator Skin — Upper', part_no:'362-17100', elbit_pn:'54-10-00615-00', drawing_no:'54-DP-000722', batch_no:'B-2024-ESU-005', rev:'A', status:'pending', start_date:'2024-06-13', priority:'normal', assigned_to:[], hazmat:false, notes:'Awaiting mould release from WO-2024-004.', wi_id:STD_WI_ID, ops:cloneOps([]) },
+  { id:'WO-2024-006', component:'Wing Root Rib No.3', part_no:'362-18050', elbit_pn:'54-10-00627-00', drawing_no:'54-DP-000735', batch_no:'B-2024-WRR-006', rev:'—', status:'pending', start_date:'2024-06-14', priority:'low', assigned_to:[], hazmat:false, notes:'', wi_id:STD_WI_ID, ops:cloneOps([]) },
+];
+
+// Work Instructions — WI-STD-001 is the standard generic routing template
+// that the 6 work orders above actually follow (same 11-op composition
+// cloneOps() used to freeze into every WO; now it's a real, editable,
+// linked record instead). WI-001..003 are the part-specific instructions
+// that already existed as frontend-only mock data.
+const WIS = [
+  { id: STD_WI_ID, title: 'Standard Composite Part Routing — Generic Template', part_no: 'GENERIC', drawing_no: '—', rev: 'A00', status: 'released', author: 'System',
+    ops: [
+      { id: 1,  seq: '05',      name: 'Mould preparation',  type: 'prep',         dur: 60, hazmat: false, steps: [], mats: [], media: [] },
+      { id: 2,  seq: '10',      name: 'Laminating',         type: 'laminating',   dur: 60, hazmat: false, steps: [], mats: [], media: [] },
+      { id: 3,  seq: '20',      name: 'De-bulk #1',         type: 'debulk',       dur: 60, hazmat: false, steps: [], mats: [], media: [] },
+      { id: 4,  seq: '30',      name: 'Laminating (cont.)', type: 'laminating',   dur: 60, hazmat: false, steps: [], mats: [], media: [] },
+      { id: 5,  seq: '40',      name: 'De-bulk #2',         type: 'debulk',       dur: 60, hazmat: false, steps: [], mats: [], media: [] },
+      { id: 6,  seq: '150-QG',  name: 'QG — Pre-cure',      type: 'quality-gate', dur: 60, hazmat: false, steps: [], mats: [], media: [] },
+      { id: 7,  seq: '150',     name: 'Curing',             type: 'curing',       dur: 60, hazmat: false, steps: [], mats: [], media: [] },
+      { id: 8,  seq: '160-QG',  name: 'QG — Final',         type: 'quality-gate', dur: 60, hazmat: false, steps: [], mats: [], media: [] },
+      { id: 9,  seq: '160',     name: 'Trimming',           type: 'trimming',     dur: 60, hazmat: false, steps: [], mats: [], media: [] },
+      { id: 10, seq: 'INS',     name: 'Inspection',         type: 'inspection',   dur: 60, hazmat: false, steps: [], mats: [], media: [] },
+      { id: 11, seq: 'H&S',     name: 'Safety sign-off',    type: 'safety',       dur: 60, hazmat: false, steps: [], mats: [], media: [] },
+    ] },
+  { id: 'WI-001', title: 'Fwd Fuel Tank Bulkhead — Laminating & Trimming', part_no: '362-12120', drawing_no: '54-DP-000675', rev: '—', status: 'released', author: 'A. Bullan',
+    ops: [
+      { id: 1, seq: '05', name: 'Mould preparation', type: 'prep', dur: 60, hazmat: false, steps: ['Ensure mould 362-12120-0MA00 is prepared to PS 11-002', 'Use dot-stickers to cover all holes', 'Inspect mould for damage or contamination'], mats: [], media: [] },
+      { id: 2, seq: '10', name: 'Laminating — plies 1–6 (surface film + carbon ±45)', type: 'laminating', dur: 90, hazmat: true, steps: ['Refer to PS 11-000. Tolerance ±2 mm', 'Overlap 12–20 mm. No overlaps in hatched areas', 'Lay ply 1: Surface Film 124g @ ±45 (EL 16) — 1-493-4504601', 'Lay ply 2: Carbon 195g @ ±45 (EL 6) — 1-493-2954601', 'Trim all plies to net-edge'], mats: [{ n: 'Surface Film 124g', c: '1-493-4504601', sz: 'EL 16', q: 3, u: 'ply', b: '' }, { n: 'Carbon 195g @ ±45', c: '1-493-2954601', sz: 'EL 6', q: 3, u: 'ply', b: '' }], media: [] },
+      { id: 3, seq: '20', name: 'De-bulk #1', type: 'debulk', dur: 45, hazmat: false, steps: ['Apply Release Film P3 (perforated)', 'Apply Dry Peel Ply 52008', 'Apply Breather 150g', 'Install vacuum bag', 'Seal. Pull vacuum. RETAIN DE-BULK'], mats: [], media: [] },
+      { id: 4, seq: '150-QG', name: 'QUALITY GATE — Pre-cure layup inspection', type: 'quality-gate', dur: 30, hazmat: false, steps: ['QE must inspect and approve before cure', 'Verify ply count and sequence per drawing', 'Check all orientations — sign Route Sheet'], mats: [], media: [] },
+      { id: 5, seq: '150', name: 'Curing — vacuum bag & cycle', type: 'curing', dur: 480, hazmat: false, steps: ['Cure per PS 11-001 section 4.4.1.1', 'Apply bagging materials per standard section', 'Install 1× Vacuum Valve and 1× Sensor Valve'], mats: [], media: [] },
+      { id: 6, seq: '160-QG', name: 'QUALITY GATE — Final inspection', type: 'quality-gate', dur: 60, hazmat: false, steps: ['Qualified inspector only — SOI I-362-12120', 'Visual — no cracks, voids or delamination', 'Flange thickness 2 mm, 28× holes A, hole B 22 mm', 'Cut-out D 200×250 mm — reject if any check fails'], mats: [], media: [] },
+      { id: 7, seq: '160', name: 'Trimming — routing, drilling & de-flash', type: 'trimming', dur: 120, hazmat: false, steps: ['De-bag part, leave in mould for routing', 'Rout using 1/4" cutter with 1/8" offset collar', 'Drill 28× holes 4.3 mm and 1× hole 1/4"', 'De-flash and de-burr — weigh and pass to inspection'], mats: [], media: [] },
+    ] },
+  { id: 'WI-002', title: 'Aft Fuselage Skin Panel — Laminating', part_no: '362-14200', drawing_no: '54-DP-000681', rev: 'A', status: 'released', author: 'M. Santos',
+    ops: [
+      { id: 1, seq: '05', name: 'Mould preparation', type: 'prep', dur: 45, hazmat: false, steps: ['Clean and inspect mould', 'Apply release agent per PS 11-002'], mats: [], media: [] },
+      { id: 2, seq: '10', name: 'Laminating — asymmetric layup', type: 'laminating', dur: 120, hazmat: true, steps: ['Check fibre direction carefully — asymmetric layup', 'Lay plies per drawing 54-DP-000681', 'Overlap 12–20 mm'], mats: [], media: [] },
+      { id: 3, seq: '150-QG', name: 'QUALITY GATE — Pre-cure', type: 'quality-gate', dur: 30, hazmat: false, steps: ['Verify layup orientation and ply count', 'QE sign-off required before cure'], mats: [], media: [] },
+      { id: 4, seq: '150', name: 'Curing', type: 'curing', dur: 480, hazmat: false, steps: ['Cure per PS 11-001', 'Vacuum bag setup per standard section'], mats: [], media: [] },
+    ] },
+  { id: 'WI-003', title: 'Main Spar Web — Critical Laminate', part_no: '362-15010', drawing_no: '54-DP-000695', rev: 'B', status: 'draft', author: 'C. Neves',
+    ops: [
+      { id: 1, seq: '05', name: 'Mould preparation', type: 'prep', dur: 60, hazmat: false, steps: ['Critical primary structure — 100% mould inspection required', 'Document mould serial number on Route Sheet'], mats: [], media: [] },
+    ] },
 ];
 
 // Controlled documents seeded into the Document Pyramid register — mirrors
@@ -121,17 +166,35 @@ const STARTER_USERS = [
       console.log(`✓ User ready: ${u.username} (${u.role})`);
     }
 
+    // Work instructions — seeded before work orders since work_orders.wi_id
+    // references work_instructions(id).
+    for (const wi of WIS) {
+      await pool.query(
+        `INSERT INTO work_instructions (id, title, part_no, drawing_no, rev, status, author, ops)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (id) DO NOTHING`,
+        [wi.id, wi.title, wi.part_no, wi.drawing_no, wi.rev, wi.status, wi.author, JSON.stringify(wi.ops)]
+      );
+    }
+    console.log(`✓ Seeded ${WIS.length} work instructions.`);
+
     // Work orders
     for (const w of WOS) {
       await pool.query(
         `INSERT INTO work_orders
            (id, component, part_no, elbit_pn, drawing_no, batch_no, rev,
-            status, priority, start_date, assigned_to, hazmat, notes, ops)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+            status, priority, start_date, assigned_to, hazmat, notes, ops, wi_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
          ON CONFLICT (id) DO NOTHING`,
         [w.id, w.component, w.part_no, w.elbit_pn, w.drawing_no, w.batch_no, w.rev,
          w.status, w.priority, w.start_date, JSON.stringify(w.assigned_to),
-         w.hazmat, w.notes, JSON.stringify(w.ops)]
+         w.hazmat, w.notes, JSON.stringify(w.ops), w.wi_id]
+      );
+      // Backfill wi_id for rows that already existed from an earlier seed run
+      // (ON CONFLICT DO NOTHING above skips them entirely otherwise).
+      await pool.query(
+        `UPDATE work_orders SET wi_id = $2 WHERE id = $1 AND wi_id IS NULL`,
+        [w.id, w.wi_id]
       );
     }
     console.log(`✓ Seeded ${WOS.length} work orders.`);

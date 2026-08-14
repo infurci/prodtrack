@@ -20,7 +20,7 @@ function rowToWO(r) {
     id: r.id, component: r.component, partNo: r.part_no, elbitPn: r.elbit_pn,
     drawingNo: r.drawing_no, batchNo: r.batch_no, rev: r.rev, status: r.status,
     priority: r.priority, startDate: r.start_date, assignedTo: r.assigned_to,
-    hazmat: r.hazmat, notes: r.notes, ops: r.ops, ...r.extra,
+    hazmat: r.hazmat, notes: r.notes, ops: r.ops, wiId: r.wi_id, ...r.extra,
     pendingChange: r.pending_change,
     pendingRequestedById: r.pending_requested_by,
     pendingRequestedByName: r.pending_requested_by_name,
@@ -65,13 +65,13 @@ router.post('/', requireAuth, requireRole('engineer', 'admin'), async (req, res)
     const { rows } = await pool.query(
       `INSERT INTO work_orders
         (id, component, part_no, elbit_pn, drawing_no, batch_no, rev,
-         status, priority, start_date, assigned_to, hazmat, notes, ops, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         status, priority, start_date, assigned_to, hazmat, notes, ops, wi_id, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        RETURNING *`,
       [b.id, b.component, b.partNo, b.elbitPn, b.drawingNo, b.batchNo, b.rev || '—',
        b.status || 'pending', b.priority || 'normal', b.startDate || null,
        JSON.stringify(b.assignedTo || []), !!b.hazmat, b.notes || '',
-       JSON.stringify(b.ops || []), req.user.id]
+       JSON.stringify(b.ops || []), b.wiId || null, req.user.id]
     );
     res.status(201).json(rowToWO(rows[0]));
   } catch (err) {

@@ -18,6 +18,7 @@ app.use('/api/workorders', require('./routes/workorders'));
 app.use('/api/documents', require('./routes/documents'));
 app.use('/api/employees', require('./routes/employees'));
 app.use('/api/doa-documents', require('./routes/doadocuments'));
+app.use('/api/workinstructions', require('./routes/workinstructions'));
 
 // --- Health check (used to confirm DB connectivity) ---
 app.get('/api/health', async (req, res) => {
