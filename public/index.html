@@ -4433,7 +4433,12 @@ function ddmRenderNPDDetail(id){
 
 function ddmRenderNPDForm(){
   const f=DDM_FORM_NPD;
-  const sel=(key,opts,val)=>`<select class="fi" onchange="DDM_FORM_NPD.${key}=this.value">${opts.map(o=>`<option value="${o}" ${o===val?'selected':''}>${o}</option>`).join('')}</select>`;
+  // When val doesn't match any option (e.g. a field left unset on a blank
+  // form), show a real "— Select —" placeholder instead of letting the
+  // browser silently default to the first option — otherwise the dropdown
+  // LOOKS like a value is chosen while DDM_FORM_NPD.key is still empty,
+  // and submitting trips the "required" check with no visible cause.
+  const sel=(key,opts,val)=>`<select class="fi" onchange="DDM_FORM_NPD.${key}=this.value">${!opts.includes(val)?'<option value="" selected disabled>— Select —</option>':''}${opts.map(o=>`<option value="${o}" ${o===val?'selected':''}>${o}</option>`).join('')}</select>`;
   const inp=(key,val,ph)=>`<input class="fi" type="text" placeholder="${ph||''}" value="${val||''}" oninput="DDM_FORM_NPD.${key}=this.value">`;
   const ta=(key,val,ph,rows)=>`<textarea class="fi" rows="${rows||3}" placeholder="${ph||''}" oninput="DDM_FORM_NPD.${key}=this.value">${val||''}</textarea>`;
   return `<div class="page-hdr" style="margin-bottom:12px"><div><button class="btn btn-s" onclick="DDMST.newPartForm=false;DDM_FORM_NPD=null;render()" style="margin-bottom:6px"><i class="ti ti-x"></i>Cancel</button><div class="page-title">New Part Design — Initiation Form</div><div style="font-size:11px;color:var(--t2)">DRAFT_DesignProcess_Airframe · VDH-001-001 · VMI-001-002 A02</div></div><button class="btn btn-g" onclick="ddmSubmitNPD()"><i class="ti ti-check"></i>Submit &amp; open record</button></div>
