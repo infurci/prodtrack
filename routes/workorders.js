@@ -20,7 +20,7 @@ function rowToWO(r) {
     id: r.id, component: r.component, partNo: r.part_no, elbitPn: r.elbit_pn,
     drawingNo: r.drawing_no, batchNo: r.batch_no, rev: r.rev, status: r.status,
     priority: r.priority, startDate: r.start_date, assignedTo: r.assigned_to,
-    hazmat: r.hazmat, notes: r.notes, ops: r.ops, wiId: r.wi_id, ...r.extra,
+    hazmat: r.hazmat, notes: r.notes, ops: r.ops, wiId: r.wi_id, extraOps: r.extra_ops, ...r.extra,
     pendingChange: r.pending_change,
     pendingRequestedById: r.pending_requested_by,
     pendingRequestedByName: r.pending_requested_by_name,
@@ -179,6 +179,55 @@ router.post('/:id/change-request/reject', requireAuth, requireRole('quality', 'e
   } catch (err) {
     console.error('WO change-reject error:', err.message);
     res.status(500).json({ error: 'Could not reject change request.' });
+  }
+});
+
+// POST /api/workorders/:id/extra-ops   (quality/engineer/admin)
+// Calls a complementary operation into this WO's routing — the operation
+// itself must already exist in a Work Instruction (category:'complementary');
+// it's never authored here. Body: { wiId, opId }.
+router.post('/:id/extra-ops', requireAuth, requireRole('quality', 'engineer', 'admin'), async (req, res) => {
+  const { wiId, opId } = req.body || {};
+  if (!wiId || opId === undefined || opId === null) {
+    return res.status(400).json({ error: 'A work instruction and operation must be specified.' });
+  }
+  try {
+    const { rows: wiRows } = await pool.query('SELECT ops FROM work_instructions WHERE id = $1', [wiId]);
+    if (!wiRows[0]) return res.status(404).json({ error: 'Work instruction not found.' });
+    const srcOp = (wiRows[0].ops || []).find((o) => String(o.id) === String(opId));
+    if (!srcOp) return res.status(404).json({ error: 'Operation not found on that work instruction.' });
+    if (srcOp.category !== 'complementary') {
+      return res.status(400).json({ error: 'Only operations marked "complementary" on a Work Instruction can be called into a Work Order.' });
+    }
+    const { rows: existing } = await pool.query('SELECT extra_ops FROM work_orders WHERE id = $1', [req.params.id]);
+    if (!existing[0]) return res.status(404).json({ error: 'Work order not found.' });
+    const extraOps = existing[0].extra_ops || [];
+    if (extraOps.some((e) => e.wiId === wiId && String(e.opId) === String(opId))) {
+      return res.status(409).json({ error: 'That operation is already on this work order.' });
+    }
+    extraOps.push({ wiId, opId });
+    await pool.query('UPDATE work_orders SET extra_ops = $2 WHERE id = $1', [req.params.id, JSON.stringify(extraOps)]);
+    const { rows } = await pool.query(`${SELECT_WO} WHERE wo.id = $1`, [req.params.id]);
+    res.json(rowToWO(rows[0]));
+  } catch (err) {
+    console.error('Add extra op error:', err.message);
+    res.status(500).json({ error: 'Could not add operation.' });
+  }
+});
+
+// DELETE /api/workorders/:id/extra-ops   (quality/engineer/admin) — body: { wiId, opId }
+router.delete('/:id/extra-ops', requireAuth, requireRole('quality', 'engineer', 'admin'), async (req, res) => {
+  const { wiId, opId } = req.body || {};
+  try {
+    const { rows: existing } = await pool.query('SELECT extra_ops FROM work_orders WHERE id = $1', [req.params.id]);
+    if (!existing[0]) return res.status(404).json({ error: 'Work order not found.' });
+    const extraOps = (existing[0].extra_ops || []).filter((e) => !(e.wiId === wiId && String(e.opId) === String(opId)));
+    await pool.query('UPDATE work_orders SET extra_ops = $2 WHERE id = $1', [req.params.id, JSON.stringify(extraOps)]);
+    const { rows } = await pool.query(`${SELECT_WO} WHERE wo.id = $1`, [req.params.id]);
+    res.json(rowToWO(rows[0]));
+  } catch (err) {
+    console.error('Remove extra op error:', err.message);
+    res.status(500).json({ error: 'Could not remove operation.' });
   }
 });
 

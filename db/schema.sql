@@ -199,3 +199,10 @@ CREATE TRIGGER trg_wi_touch
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS wi_id TEXT REFERENCES work_instructions(id);
+
+-- Complementary operations called into this WO from a Work Instruction's
+-- pool of optional ops (never authored directly on the WO itself — only
+-- picked from an existing WI, by quality/engineer/admin). Each entry is
+-- {wiId, opId} identifying the source operation, which is still rendered
+-- live from that WI (steps/media follow WI edits just like the core ops).
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS extra_ops JSONB NOT NULL DEFAULT '[]'::jsonb;

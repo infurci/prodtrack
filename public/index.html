@@ -387,6 +387,8 @@ const API = {
   listWIs(){ return this.req('GET','/api/workinstructions'); },
   createWI(wi){ return this.req('POST','/api/workinstructions',wi); },
   updateWI(id,wi){ return this.req('PUT','/api/workinstructions/'+encodeURIComponent(id),wi); },
+  addExtraOp(woId,wiId,opId){ return this.req('POST','/api/workorders/'+encodeURIComponent(woId)+'/extra-ops',{wiId,opId}); },
+  removeExtraOp(woId,wiId,opId){ return this.req('DELETE','/api/workorders/'+encodeURIComponent(woId)+'/extra-ops',{wiId,opId}); },
 };
 
 // Employee roster — powers name-autocomplete everywhere via a shared <datalist>.
@@ -663,7 +665,7 @@ const BASE_OPS=[
 // falls back to the static BASE_OPS template before WIS has loaded.
 function cloneOps(statuses,wiId){
   const wi=WIS.find(w=>w.id===(wiId||STD_WI_ID));
-  const src=wi?wi.ops:BASE_OPS;
+  const src=(wi?wi.ops:BASE_OPS).filter(o=>o.category!=='complementary');
   return src.map((o,i)=>{
     const s=statuses[i]||'pending';
     const merged={...JSON.parse(JSON.stringify(o)),id:Math.random(),status:s,by:s==='done'?'Operator':null,at:s==='done'?'—':null,notes:''};
@@ -671,6 +673,16 @@ function cloneOps(statuses,wiId){
     merged.qg=wi?(o.type==='quality-gate'):!!o.qg;
     return merged;
   });
+}
+
+// Suggests a default Work Instruction for a typed part number: an exact
+// partNo match wins, otherwise fall back to the generic template.
+function matchWIByPartNo(partNo){
+  if(partNo){
+    const hit=WIS.find(w=>w.partNo&&w.partNo.toLowerCase()===partNo.toLowerCase());
+    if(hit)return hit.id;
+  }
+  return STD_WI_ID;
 }
 
 // Re-syncs a WO's ops array from its linked Work Instruction: order, name,
@@ -683,13 +695,18 @@ function syncWOOpsFromWI(wo){
   const wi=WIS.find(w=>w.id===wo.wiId);
   if(!wi||!wi.ops||!wi.ops.length)return;
   const oldOps=wo.ops||[];
+  const oldCore=oldOps.filter(o=>!o.isExtra);
+  const oldExtra=oldOps.filter(o=>o.isExtra);
+
+  // Core routing: every non-complementary op on the linked WI, in its
+  // current order — this is what makes reordering/media edits show up.
   const byWiOpId={};
   const bySeq={};
-  oldOps.forEach(o=>{
+  oldCore.forEach(o=>{
     if(o.wiOpId!=null)byWiOpId[o.wiOpId]=o;
     else if(o.seq!=null)bySeq[o.seq]=o; // one-time migration key for pre-existing WOs saved before WI-linking existed — seq is stable across reordering, unlike array position
   });
-  wo.ops=wi.ops.map((wiOp)=>{
+  const coreOps=wi.ops.filter(o=>o.category!=='complementary').map((wiOp)=>{
     const inst=byWiOpId[wiOp.id]||bySeq[wiOp.seq];
     const merged=JSON.parse(JSON.stringify(wiOp));
     merged.wiOpId=wiOp.id;
@@ -704,6 +721,34 @@ function syncWOOpsFromWI(wo){
     }
     return merged;
   });
+
+  // Complementary operations explicitly called into this WO (wo.extraOps),
+  // resolved live from whichever WI they actually live on — may not be the
+  // WO's own linked WI.
+  const byExtraKey={};
+  oldExtra.forEach(o=>{ byExtraKey[o.extraWiId+':'+o.wiOpId]=o; });
+  const extraOps=(wo.extraOps||[]).map((ref)=>{
+    const srcWi=WIS.find(w=>w.id===ref.wiId);
+    const srcOp=srcWi&&srcWi.ops.find(o=>String(o.id)===String(ref.opId));
+    if(!srcOp)return null;
+    const inst=byExtraKey[ref.wiId+':'+ref.opId];
+    const merged=JSON.parse(JSON.stringify(srcOp));
+    merged.isExtra=true;
+    merged.extraWiId=ref.wiId;
+    merged.wiOpId=srcOp.id;
+    merged.id=inst?inst.id:Math.random();
+    merged.status=inst?inst.status:'pending';
+    merged.by=inst?inst.by:null;
+    merged.at=inst?inst.at:null;
+    merged.notes=inst?inst.notes:'';
+    merged.qg=srcOp.type==='quality-gate';
+    if(inst&&inst.mats&&merged.mats){
+      merged.mats.forEach((m,mi)=>{ if(inst.mats[mi])m.b=inst.mats[mi].b||''; });
+    }
+    return merged;
+  }).filter(Boolean);
+
+  wo.ops=coreOps.concat(extraOps);
 }
 
 /* ════════════════════════════════════════════
@@ -1079,22 +1124,76 @@ function openWODetail(woId){
 
     <div style="font-size:11px;color:var(--t2);margin-bottom:4px">Progress — ${p.done}/${wo.ops.length} operations · ${p.pct}%</div>
     <div class="po" style="height:7px;border-radius:4px;margin-bottom:14px"><div class="pi" style="width:${p.pct}%;border-radius:4px"></div></div>
-    ${woSec('Operations','ti-list-check',wo.ops.map(op=>`
+    ${woSec('Operations','ti-list-check',`
+    ${canAddExtraOp()?`<button class="btn btn-s" style="margin-bottom:8px" onclick="openAddExtraOpPicker('${woId}')"><i class="ti ti-plus"></i>Add operation from a Work Instruction</button>`:''}
+    ${wo.ops.map(op=>`
     <div class="op-row ${op.qg?'qg-r':''} ${op.status==='in-progress'?'act-r':''} ${op.status==='done'?'dn-r':''}" onclick="openOpDetail('${woId}','${op.id}')">
       <div class="sb ${seqCls(op.status)}">${op.status==='done'?'<i class="ti ti-check" style="font-size:10px"></i>':op.seq}</div>
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:3px">${op.name}</div>
-        <div style="display:flex;gap:4px;flex-wrap:wrap">${typeBdg(op.type)} ${stBdg(op.status)} <span style="font-size:10px;color:var(--t2)"><i class="ti ti-clock"></i>${op.dur}m</span></div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">${typeBdg(op.type)} ${stBdg(op.status)} ${op.isExtra?'<span class="bdg b-pu" style="font-size:10px"><i class="ti ti-plus" style="font-size:9px"></i>Complementary</span>':''} <span style="font-size:10px;color:var(--t2)"><i class="ti ti-clock"></i>${op.dur}m</span></div>
         ${op.by?`<div style="margin-top:3px;font-size:10px;color:var(--t3)"><i class="ti ti-user-check"></i> ${op.by} · ${op.at}</div>`:''}
       </div>
+      ${op.isExtra&&canAddExtraOp()?`<button class="btn btn-s" style="padding:4px 7px" title="Remove from this work order" onclick="event.stopPropagation();removeExtraOpUI('${woId}','${op.extraWiId}','${op.wiOpId}')"><i class="ti ti-x"></i></button>`:''}
       <i class="ti ti-chevron-right" style="color:var(--t3);font-size:13px;margin-top:4px"></i>
-    </div>`).join(''))}`;
+    </div>`).join('')}`)}`;
 
   const foot=`
     <button class="${clocked?'btn btn-r':'btn btn-a'}" onclick="clockIO('${woId}')"><i class="ti ti-clock"></i>${clocked?'Clock out':'Clock in'}</button>
     ${clocked?`<span style="font-size:11px;color:var(--grn);align-self:center"><i class="ti ti-check"></i> ${clocked}</span>`:''}
     <button class="btn" style="margin-left:auto" onclick="mA_tryClose()">Close</button>`;
   setA(hdr,body,foot,'700px');
+}
+
+/* ── COMPLEMENTARY OPERATIONS (called into a WO from a WI, never typed directly on the WO) ── */
+function canAddExtraOp(){ return ['quality','engineer','admin'].includes(ST.role); }
+function openAddExtraOpPicker(woId){
+  const wo=WOS.find(w=>w.id===woId);if(!wo)return;
+  const already={};
+  (wo.extraOps||[]).forEach(e=>{ already[e.wiId+':'+e.opId]=true; });
+  const pool=[];
+  WIS.forEach(wi=>{
+    (wi.ops||[]).forEach(op=>{
+      if(op.category==='complementary'&&!already[wi.id+':'+op.id]){
+        pool.push({wiId:wi.id,wiTitle:wi.title,opId:op.id,op});
+      }
+    });
+  });
+  const hdr=`<div style="flex:1"><div class="modal-title" style="font-size:15px">Add operation to ${wo.id}</div><div style="font-size:11px;color:var(--t2);margin-top:2px">Complementary operations authored on a Work Instruction — pick one to call into this work order.</div></div><button class="btn btn-s" onclick="openWODetail('${woId}')"><i class="ti ti-x"></i></button>`;
+  const body=`
+    ${!pool.length?`<div class="ib"><i class="ti ti-info-circle"></i> No complementary operations are available. An engineer must first mark an operation as "Complementary" on a Work Instruction before it can be called into a work order.</div>`:`
+    <div style="display:flex;flex-direction:column;gap:7px">
+    ${pool.map(p=>`
+    <div class="op-row" style="cursor:pointer" onclick="addExtraOpUI('${woId}','${p.wiId}','${p.opId}')">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:12px">${p.op.name}</div>
+        <div style="font-size:10px;color:var(--t3);margin-top:2px">From ${p.wiTitle} (${p.wiId})</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">${typeBdg(p.op.type)} <span style="font-size:10px;color:var(--t2)"><i class="ti ti-clock"></i>${p.op.dur}m</span></div>
+      </div>
+      <i class="ti ti-plus" style="color:var(--t3);font-size:13px;margin-top:4px"></i>
+    </div>`).join('')}
+    </div>`}
+    <div id="aeo-err" style="display:none;color:var(--red);font-size:12px;margin-top:10px;padding:8px 10px;background:var(--red-bg);border-radius:6px"></div>`;
+  const foot=`<button class="btn" style="margin-left:auto" onclick="openWODetail('${woId}')">Back to WO</button>`;
+  setA(hdr,body,foot,'560px');
+}
+async function addExtraOpUI(woId,wiId,opId){
+  const errEl=document.getElementById('aeo-err');
+  try{
+    const updated=await API.addExtraOp(woId,wiId,opId);
+    const idx=WOS.findIndex(w=>w.id===woId);
+    if(idx>=0){ WOS[idx]=updated; syncWOOpsFromWI(WOS[idx]); }
+    openWODetail(woId);
+  }catch(err){ if(errEl){errEl.textContent=err.message;errEl.style.display='block';} }
+}
+async function removeExtraOpUI(woId,wiId,opId){
+  if(!confirm('Remove this operation from the work order?'))return;
+  try{
+    const updated=await API.removeExtraOp(woId,wiId,opId);
+    const idx=WOS.findIndex(w=>w.id===woId);
+    if(idx>=0){ WOS[idx]=updated; syncWOOpsFromWI(WOS[idx]); }
+    openWODetail(woId);
+  }catch(err){ alert(err.message); }
 }
 
 /* ── WO CHANGE-REQUEST APPROVAL ── */
@@ -1217,7 +1316,7 @@ function openWIDetail(wiId){
       <div style="width:22px;height:22px;border-radius:50%;background:${opColor(op.type)};color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${op.seq}</div>
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:12px;margin-bottom:3px">${op.name}</div>
-        <div style="display:flex;gap:5px;flex-wrap:wrap">${typeBdg(op.type)} <span style="font-size:10px;color:var(--t2)"><i class="ti ti-clock"></i>${op.dur}m</span> <span style="font-size:10px;color:var(--t2)">${op.steps.length} steps</span>${op.media&&op.media.length?`<span style="font-size:10px;color:var(--t2)"><i class="ti ti-photo"></i>${op.media.length} media</span>`:''}</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">${op.category==='complementary'?'<span class="bdg b-pu" style="font-size:10px"><i class="ti ti-plus" style="font-size:9px"></i>Complementary</span>':''} ${typeBdg(op.type)} <span style="font-size:10px;color:var(--t2)"><i class="ti ti-clock"></i>${op.dur}m</span> <span style="font-size:10px;color:var(--t2)">${op.steps.length} steps</span>${op.media&&op.media.length?`<span style="font-size:10px;color:var(--t2)"><i class="ti ti-photo"></i>${op.media.length} media</span>`:''}</div>
       </div>
       ${op.hazmat?'<span class="tag" style="font-size:9px"><i class="ti ti-alert-triangle" style="font-size:8px"></i>HZ</span>':''}
     </div>`).join('')}`;
@@ -1301,6 +1400,7 @@ function renderDZ(){
       <div class="op-block-seq" style="background:${opColor(op.type)}">${op.seq}</div>
       <div class="op-block-name">${op.name}</div>
       <div style="display:flex;gap:4px;margin-left:auto;align-items:center">
+        ${op.category==='complementary'?'<span class="bdg b-pu" style="font-size:10px"><i class="ti ti-plus" style="font-size:9px"></i>Complementary</span>':''}
         ${typeBdg(op.type)}
         <span style="font-size:10px;color:var(--t2)"><i class="ti ti-clock"></i>${op.dur}m</span>
         ${op.hazmat?'<span class="tag" style="font-size:9px;padding:1px 4px"><i class="ti ti-alert-triangle" style="font-size:8px"></i>HZ</span>':''}
@@ -1341,7 +1441,7 @@ function dzDrop(e){
   };
   const d=defaults[type];
   const seqMap={prep:'05',laminating:'10',debulk:'20',curing:'150','quality-gate':'QG',trimming:'160',inspection:'INS',safety:'H&S'};
-  const newOp={id:Date.now(),seq:seqMap[type]||'OP',name:d.name,type,dur:d.dur,hazmat:d.hazmat,steps:[...d.steps],mats:[],media:[],qg:type==='quality-gate'};
+  const newOp={id:Date.now(),seq:seqMap[type]||'OP',name:d.name,type,dur:d.dur,hazmat:d.hazmat,steps:[...d.steps],mats:[],media:[],qg:type==='quality-gate',category:'core'};
   ST.editingWI.ops.push(newOp);
   refreshDZ();
   openOpEditor(newOp.id);
@@ -1380,6 +1480,14 @@ function openOpEditor(opId){
       <div class="fg"><label class="fl">Duration (min)</label><input class="fi" type="number" id="oe-dur" value="${op.dur}" min="1"></div>
     </div>
     <div class="fg" style="margin-bottom:9px">
+      <label class="fl">Category</label>
+      <select class="fi" id="oe-category">
+        <option value="core" ${op.category!=='complementary'?'selected':''}>Core — part of every WO's standard routing</option>
+        <option value="complementary" ${op.category==='complementary'?'selected':''}>Complementary — optional, called into a WO individually</option>
+      </select>
+      <div style="font-size:10px;color:var(--t2);margin-top:4px">Complementary operations never appear on a Work Order automatically — only quality/engineering/admin can pull one in from here, from the WO's own screen.</div>
+    </div>
+    <div class="fg" style="margin-bottom:9px">
       <label class="fl">Hazmat materials</label>
       <select class="fi" id="oe-haz"><option value="false" ${!op.hazmat?'selected':''}>No</option><option value="true" ${op.hazmat?'selected':''}>Yes — resins / chemicals present</option></select>
     </div>
@@ -1416,6 +1524,7 @@ function saveOpEdit(){
   op.hazmat=document.getElementById('oe-haz').value==='true';
   op.steps=document.getElementById('oe-steps').value.split('\n').map(s=>s.trim()).filter(Boolean);
   op.qg=op.type==='quality-gate';
+  op.category=document.getElementById('oe-category').value;
   closeModal('mC');
   refreshDZ();
   if(document.getElementById('wi-title-display'))document.getElementById('wi-title-display').textContent=ST.editingWI.title||'Untitled';
@@ -1574,6 +1683,11 @@ function openNewWOForm(editId){
       frow('Batch / Lot no.',fi('nw-batch','e.g. B-2024-XXX-007',g(wo&&wo.batchNo)),'*'),
       frow('A/C S/N',fi('nw-acsn','e.g. MSNXXX',g(wo&&wo.aircraftSN))),
     ])
+    +frow('Work Instruction',
+      '<select class="fi" id="nw-wi"'+(isEdit?' disabled':'')+'>'
+      +WIS.map(function(w){return '<option value="'+w.id+'"'+((wo?wo.wiId:matchWIByPartNo(g(wo&&wo.partNo)))===w.id?' selected':'')+'>'+w.title+(w.partNo&&w.partNo!=='GENERIC'?' — '+w.partNo:'')+'</option>';}).join('')
+      +'</select>'+(isEdit?'<div style="font-size:10px;color:var(--t2);margin-top:4px">Linked at creation and can\'t be changed here.</div>':'<div style="font-size:10px;color:var(--t2);margin-top:4px">The operations for this work order will mirror this Work Instruction\'s current routing (steps, order and reference media). Create or edit Work Instructions from the Work Instructions panel.</div>'),
+      '*')
     +ggrid('1fr 1fr 1fr',[
       frow('Start date',fi('nw-date','',g(wo&&wo.startDate)||today,'date'),'*'),
       frow('Estimated completion',fi('nw-end','','',g(wo&&wo.endDate),'type="date"')),
@@ -1940,6 +2054,12 @@ function saveNewWO(editId){
   var materials=readRowsByClass('mat-row',['desc','pn','sn','qty','remarks']);
   var remarks=readRowsByClass('remark-row',['desc','action']);
   var opsStr=g('nw-ops');
+  var wiEl=document.getElementById('nw-wi');
+  var wiId=wiEl?wiEl.value:STD_WI_ID;
+  if(!wiId){
+    if(errEl){errEl.style.display='block';errMsg.textContent='Select the Work Instruction this work order should follow.';}
+    return;
+  }
 
   var data={
     component:comp,workDesc:comp,
@@ -1996,7 +2116,7 @@ function saveNewWO(editId){
     })();
   } else {
     var newId='WO-2024-'+String(WOS.length+1).padStart(3,'0');
-    var newWO=Object.assign({id:newId,status:'pending',wiId:STD_WI_ID,ops:cloneOps([])},data);
+    var newWO=Object.assign({id:newId,status:'pending',wiId:wiId,ops:cloneOps([],wiId)},data);
     WOS.push(newWO);
     saveWO(newWO,true);
     closeModal('mD');render();
