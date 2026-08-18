@@ -235,7 +235,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   </nav>
   <div class="subnav">
     <span class="subnav-info"><i class="ti ti-building-factory-2" style="font-size:13px;vertical-align:-1px"></i> Composites Bay &nbsp;·&nbsp; <span id="clk"></span></span>
-    <span style="margin-left:auto;font-size:10px;color:var(--t3)">54-DP-000675 · LOLA 362-12120 · Elbit Systems UAS</span>
+    <span style="margin-left:auto;font-size:10px;color:var(--t3)">INFURCI AEROSPACE - PLM</span>
   </div>
   <main class="main" id="mc"></main>
 
@@ -4218,7 +4218,7 @@ function escalatePR(id){const p=DOA_PRS.find(x=>x.id===id);if(p){p.status='in-pr
                VMI-001-002 A02, VML-001-015 A01, VDH-001-001
 ═══════════════════════════════════════════════════════════════ */
 
-const DDMST = { sub:'overview', newPartForm:false, newECOForm:false, activeNPD:null, activeECO:null };
+const DDMST = { sub:'overview', newPartForm:false, newECOForm:false, activeNPD:null, activeECO:null, editingNPDId:null };
 
 const DDM_ROLES=['Design Engineer (DE1)','Senior Design Engineer (DE2)','CVE','Quality Manager (QM)','Configuration Manager (CM)','Manufacturing Engineering (ME)','DevQA','Head of Design (HDO)'];
 const DDM_SYSTEMS=['Airframe','Flight Control System','Propulsion','Avionics','Landing Gear','Fuel System','Electrical / EWIS','Structural','Mechanical Interface','Software'];
@@ -4279,6 +4279,18 @@ function ddmNewNPDId(){return 'NPD-2024-00'+(DDM_NPDS.length+1);}
 function ddmNewECOId(){return 'ECO-2024-00'+(DDM_ECOS.length+1);}
 function ddmNewEWOId(){return 'EWO-2024-00'+(DDM_EWOS.length+1);}
 
+// Reopens an existing part design's initiation form for editing — the
+// same fields captured at creation (identification, scope, team, phase
+// pre-fill refs) can be revised later without touching the phase-gate
+// sign-offs, exit criteria, or status already recorded against it.
+function ddmEditNPD(id){
+  const n=DDM_NPDS.find(x=>x.id===id);if(!n)return;
+  DDMST.newPartForm=true;
+  DDMST.editingNPDId=id;
+  DDM_FORM_NPD=JSON.parse(JSON.stringify(n));
+  render();
+}
+
 function ddmBlankNPD(){
   return {id:ddmNewNPDId(),pn:'',title:'',system:'Airframe',partType:'',dal:'',de1:ST.role,de2:'',cve:'',qm:'',cm:'',me:'',devqa:'',created:new Date().toISOString().split('T')[0],initiator:ST.role,phase:'Architecture',status:'open',description:'',entryRequirements:'',
     architecturePhase:{sddChapter:'',interfaceDoc:'',reviewChecklist:'',configControlled:false,de2Review:false,de1Review:false,cveReview:false,qmReview:false,approvalDate:'',approver:'',gateStatus:'open',gateDate:''},
@@ -4327,12 +4339,13 @@ function vDDM(){
     </div>
     <div class="g2">
       <div class="card">
-        <div class="card-hdr"><div class="card-title"><i class="ti ti-pencil-plus"></i>Active part designs</div><button class="btn btn-a btn-s" onclick="DDMST.newPartForm=true;DDM_FORM_NPD=ddmBlankNPD();render()"><i class="ti ti-plus"></i>New design</button></div>
+        <div class="card-hdr"><div class="card-title"><i class="ti ti-pencil-plus"></i>Active part designs</div><button class="btn btn-a btn-s" onclick="DDMST.newPartForm=true;DDMST.editingNPDId=null;DDM_FORM_NPD=ddmBlankNPD();render()"><i class="ti ti-plus"></i>New design</button></div>
         ${DDM_NPDS.map(n=>`<div class="cl" onclick="DDMST.activeNPD='${n.id}';render()" style="padding:9px 0;border-bottom:1px solid var(--s3);display:flex;gap:8px;align-items:flex-start">
           <div style="flex:1"><div style="font-size:12px;font-weight:700">${n.id} <span style="font-weight:400;color:var(--t2)">— ${n.title}</span></div>
           <div style="font-size:10px;color:var(--t2);margin-top:2px">${n.system} · ${n.partType} · DAL ${n.dal.split(' ')[0]} · Phase: <strong>${n.phase}</strong></div>
           <div style="display:flex;gap:3px;margin-top:4px">${['Architecture','Preliminary Design','Detailed Design','Production Release'].map((ph,i)=>`<div style="height:4px;width:40px;border-radius:2px;background:${DDM_PHASES.indexOf(n.phase)>=i?'var(--acc)':'var(--bd)'}"></div>`).join('')}</div></div>
           <span class="bdg ${n.status==='released'?'b-gn':n.status==='in-progress'?'b-bl':'b-am'}" style="font-size:10px">${n.status}</span>
+          ${['engineer','admin'].includes(ST.role)?`<button class="btn btn-s" style="padding:4px 7px" title="Edit initiation form" onclick="event.stopPropagation();ddmEditNPD('${n.id}')"><i class="ti ti-edit"></i></button>`:''}
         </div>`).join('')}
       </div>
       <div class="card">
@@ -4350,11 +4363,11 @@ function vDDM(){
   else if(DDMST.sub==='npd'){
     content=`<div class="page-hdr" style="margin-bottom:10px">
       <div><div class="page-title" style="font-size:14px">New Part Design Register</div><div style="font-size:11px;color:var(--t2)">DRAFT_DesignProcess_Airframe · VMP-001-002 C00 §2.2 · VDH-001-001</div></div>
-      <button class="btn btn-a" onclick="DDMST.newPartForm=true;DDM_FORM_NPD=ddmBlankNPD();render()"><i class="ti ti-plus"></i>Start new design</button>
+      <button class="btn btn-a" onclick="DDMST.newPartForm=true;DDMST.editingNPDId=null;DDM_FORM_NPD=ddmBlankNPD();render()"><i class="ti ti-plus"></i>Start new design</button>
     </div>
     <div class="ib" style="margin-bottom:10px"><i class="ti ti-info-circle"></i> Each NPD follows the 4-phase gate process: <strong>Architecture → Preliminary Design → Detailed Design → Production Release</strong>. All documents and checklists must be under configuration control before each gate closes. CVE signs technical correctness. QM confirms Work Instruction followed. 4-eyes: Drawn By ≠ Released By.</div>
     <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-pencil-plus"></i>Part designs</div><span class="bdg b-gy">${DDM_NPDS.length}</span></div>
-    <table class="tbl"><thead><tr><th style="width:90px">NPD ID</th><th style="width:100px">Part No.</th><th>Title</th><th style="width:80px">System</th><th style="width:45px">DAL</th><th style="width:130px">Phase</th><th style="width:75px">Status</th><th style="width:80px">DE1</th><th style="width:80px">Created</th></tr></thead><tbody>
+    <table class="tbl"><thead><tr><th style="width:90px">NPD ID</th><th style="width:100px">Part No.</th><th>Title</th><th style="width:80px">System</th><th style="width:45px">DAL</th><th style="width:130px">Phase</th><th style="width:75px">Status</th><th style="width:80px">DE1</th><th style="width:80px">Created</th><th style="width:40px"></th></tr></thead><tbody>
     ${DDM_NPDS.map(n=>`<tr class="cl" onclick="DDMST.activeNPD='${n.id}';render()">
       <td style="font-weight:700;font-size:11px">${n.id}</td><td style="font-size:10px;color:var(--t2);font-weight:600">${n.pn||'—'}</td>
       <td style="font-size:12px;font-weight:500;white-space:normal;line-height:1.3">${n.title}</td><td style="font-size:10px;color:var(--t2)">${n.system}</td>
@@ -4362,6 +4375,7 @@ function vDDM(){
       <td><div style="display:flex;gap:2px">${['Architecture','Preliminary Design','Detailed Design','Production Release'].map((ph,i)=>`<div style="height:5px;flex:1;border-radius:2px;background:${DDM_PHASES.indexOf(n.phase)>=i?'var(--acc)':'var(--bd)'}" title="${ph}"></div>`).join('')}</div><div style="font-size:9px;color:var(--t2);margin-top:2px">${n.phase}</div></td>
       <td><span class="bdg ${n.status==='released'?'b-gn':n.status==='in-progress'?'b-bl':'b-am'}" style="font-size:10px">${n.status}</span></td>
       <td style="font-size:10px;color:var(--t2)">${n.de1}</td><td style="font-size:11px;color:var(--t2)">${n.created}</td>
+      <td>${['engineer','admin'].includes(ST.role)?`<button class="btn btn-s" style="padding:4px 7px" title="Edit initiation form" onclick="event.stopPropagation();ddmEditNPD('${n.id}')"><i class="ti ti-edit"></i></button>`:''}</td>
     </tr>`).join('')}
     </tbody></table></div>`;
   }
@@ -4413,7 +4427,7 @@ function vDDM(){
 
   return `<div class="page-hdr" style="margin-bottom:10px">
     <div><div class="page-title">Design &amp; Development Management</div><div style="font-size:11px;color:var(--t2);margin-top:1px">DRAFT_DesignProcess_Airframe · VMP-001-002 C00 · VDH-001-001 · EASA Part-21</div></div>
-    <div style="display:flex;gap:6px"><button class="btn btn-a" onclick="DDMST.newPartForm=true;DDM_FORM_NPD=ddmBlankNPD();render()"><i class="ti ti-pencil-plus"></i>New part design</button><button class="btn" onclick="DDMST.newECOForm=true;DDM_FORM_ECO=ddmBlankECO();render()"><i class="ti ti-refresh"></i>New ECO</button></div>
+    <div style="display:flex;gap:6px"><button class="btn btn-a" onclick="DDMST.newPartForm=true;DDMST.editingNPDId=null;DDM_FORM_NPD=ddmBlankNPD();render()"><i class="ti ti-pencil-plus"></i>New part design</button><button class="btn" onclick="DDMST.newECOForm=true;DDM_FORM_ECO=ddmBlankECO();render()"><i class="ti ti-refresh"></i>New ECO</button></div>
   </div>${subNav}${content}`;
 }
 
@@ -4422,7 +4436,7 @@ function ddmRenderNPDDetail(id){
   const chk=(val,label,key,phase)=>`<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;padding:4px 0"><input type="checkbox" ${val?'checked':''} onchange="ddmToggleNPD('${n.id}','${phase}','${key}',this.checked)" style="cursor:pointer;width:14px;height:14px"><span style="${val?'color:var(--grn)':''}">${label}${val?' ✓':''}</span></label>`;
   const phCard=(title,icon,gk,checks,fields,gateLbl,gateFn)=>`<div class="card" style="border-left:3px solid ${n[gk].gateStatus==='complete'?'var(--grn)':n[gk].gateStatus==='in-progress'?'var(--blu)':n[gk].gateStatus==='open'?'var(--amb)':'var(--bd)'}"><div class="card-hdr"><div class="card-title"><i class="ti ${icon}"></i>${title}</div><div style="display:flex;gap:6px;align-items:center"><span class="bdg ${n[gk].gateStatus==='complete'?'b-gn':n[gk].gateStatus==='in-progress'?'b-bl':n[gk].gateStatus==='open'?'b-am':'b-gy'}">${n[gk].gateStatus}</span>${n[gk].gateStatus!=='complete'?`<button class="btn btn-s btn-g" onclick="${gateFn}"><i class="ti ti-gate"></i>${gateLbl}</button>`:`<span style="font-size:10px;color:var(--grn)">✓ Gate closed ${n[gk].gateDate}</span>`}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div><div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:4px">APPROVAL SIGN-OFF (4-eyes required)</div>${checks}${!n[gk].configControlled?`<div class="wb" style="margin-top:6px;padding:5px 8px;font-size:11px"><i class="ti ti-archive"></i> Documents not yet under config. control</div>`:`<div style="font-size:11px;color:var(--grn);margin-top:4px"><i class="ti ti-database"></i> Config. controlled in PLM ✓</div>`}</div><div><div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:4px">DELIVERABLES</div>${fields}</div></div></div>`;
   const exitAll=Object.values(n.exitCriteria).every(v=>v);
-  return `<div class="page-hdr" style="margin-bottom:10px"><div><button class="btn btn-s" onclick="DDMST.activeNPD=null;render()" style="margin-bottom:6px"><i class="ti ti-arrow-left"></i>Back</button><div class="page-title">${n.id} — ${n.title}</div><div style="font-size:11px;color:var(--t2);margin-top:2px">${n.pn||'P/N TBD'} · ${n.system} · ${n.partType} · DAL ${n.dal}</div></div><span class="bdg ${n.status==='released'?'b-gn':n.status==='in-progress'?'b-bl':'b-am'}" style="padding:5px 11px">${n.status}</span></div>
+  return `<div class="page-hdr" style="margin-bottom:10px"><div><button class="btn btn-s" onclick="DDMST.activeNPD=null;render()" style="margin-bottom:6px"><i class="ti ti-arrow-left"></i>Back</button><div class="page-title">${n.id} — ${n.title}</div><div style="font-size:11px;color:var(--t2);margin-top:2px">${n.pn||'P/N TBD'} · ${n.system} · ${n.partType} · DAL ${n.dal}</div></div><div style="display:flex;gap:6px;align-items:center">${['engineer','admin'].includes(ST.role)?`<button class="btn btn-s" onclick="ddmEditNPD('${n.id}')"><i class="ti ti-edit"></i>Edit initiation form</button>`:''}<span class="bdg ${n.status==='released'?'b-gn':n.status==='in-progress'?'b-bl':'b-am'}" style="padding:5px 11px">${n.status}</span></div></div>
   <div class="g4" style="margin-bottom:12px">${[['Part No.',n.pn||'TBD'],['Initiator',n.initiator],['Created',n.created],['Material',n.materialSpec||'—']].map(([l,v])=>`<div style="background:var(--s2);border-radius:8px;padding:8px 10px"><div style="font-size:10px;color:var(--t2)">${l}</div><div style="font-size:12px;font-weight:600">${v}</div></div>`).join('')}</div>
   <div class="card" style="margin-bottom:0"><div class="card-hdr"><div class="card-title"><i class="ti ti-users"></i>Design team</div></div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">${[['DE1',n.de1],['DE2',n.de2||'—'],['CVE',n.cve||'—'],['QM',n.qm||'—'],['CM',n.cm||'—'],['ME',n.me||'—'],['DevQA',n.devqa||'—'],['System',n.system]].map(([r,v])=>`<div><div style="font-size:9px;color:var(--t2)">${r}</div><div style="font-size:11px;font-weight:600">${v}</div></div>`).join('')}</div></div>
   <div class="card" style="margin-top:0"><div class="card-hdr"><div class="card-title"><i class="ti ti-file-description"></i>Description &amp; entry requirements</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div><div style="font-size:10px;color:var(--t2);margin-bottom:4px">DESCRIPTION</div><div style="font-size:12px;line-height:1.5">${n.description||'—'}</div></div><div><div style="font-size:10px;color:var(--t2);margin-bottom:4px">ENTRY REQUIREMENTS</div><div style="font-size:12px;line-height:1.5">${n.entryRequirements||'—'}</div></div></div></div>
@@ -4471,7 +4485,8 @@ function ddmRenderNPDForm(){
   const sel=(key,opts,val)=>`<select class="fi" onchange="DDM_FORM_NPD.${key}=this.value">${!opts.includes(val)?'<option value="" selected disabled>— Select —</option>':''}${opts.map(o=>`<option value="${o}" ${o===val?'selected':''}>${o}</option>`).join('')}</select>`;
   const inp=(key,val,ph)=>`<input class="fi" type="text" placeholder="${ph||''}" value="${val||''}" oninput="DDM_FORM_NPD.${key}=this.value">`;
   const ta=(key,val,ph,rows)=>`<textarea class="fi" rows="${rows||3}" placeholder="${ph||''}" oninput="DDM_FORM_NPD.${key}=this.value">${val||''}</textarea>`;
-  return `<div class="page-hdr" style="margin-bottom:12px"><div><button class="btn btn-s" onclick="DDMST.newPartForm=false;DDM_FORM_NPD=null;render()" style="margin-bottom:6px"><i class="ti ti-x"></i>Cancel</button><div class="page-title">New Part Design — Initiation Form</div><div style="font-size:11px;color:var(--t2)">DRAFT_DesignProcess_Airframe · VDH-001-001 · VMI-001-002 A02</div></div><button class="btn btn-g" onclick="ddmSubmitNPD()"><i class="ti ti-check"></i>Submit &amp; open record</button></div>
+  const isEdit=!!DDMST.editingNPDId;
+  return `<div class="page-hdr" style="margin-bottom:12px"><div><button class="btn btn-s" onclick="DDMST.newPartForm=false;DDM_FORM_NPD=null;DDMST.editingNPDId=null;render()" style="margin-bottom:6px"><i class="ti ti-x"></i>Cancel</button><div class="page-title">${isEdit?'Edit — '+f.id+' — Initiation Form':'New Part Design — Initiation Form'}</div><div style="font-size:11px;color:var(--t2)">DRAFT_DesignProcess_Airframe · VDH-001-001 · VMI-001-002 A02</div></div><button class="btn btn-g" onclick="ddmSubmitNPD()"><i class="ti ti-check"></i>${isEdit?'Save changes':'Submit & open record'}</button></div>
   <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-id"></i>1 — Part identification</div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
     <div class="fg"><label class="fl">NPD ID (auto)</label>${inp('id',f.id,'')}</div>
     <div class="fg"><label class="fl">Part Number (P/N) *</label>${inp('pn',f.pn,'e.g. PRT-V21-XXX-001')}</div>
@@ -4522,8 +4537,8 @@ function ddmRenderNPDForm(){
     <div class="fg"><label class="fl">CDR review checklist</label>${inp('detailedDesignPhase.reviewChecklist',f.detailedDesignPhase.reviewChecklist,'CHK-V21-CDR-XXX')}</div>
   </div></div>
   <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
-    <button class="btn" onclick="DDMST.newPartForm=false;DDM_FORM_NPD=null;render()">Cancel</button>
-    <button class="btn btn-g" onclick="ddmSubmitNPD()"><i class="ti ti-check"></i>Submit new part design</button>
+    <button class="btn" onclick="DDMST.newPartForm=false;DDM_FORM_NPD=null;DDMST.editingNPDId=null;render()">Cancel</button>
+    <button class="btn btn-g" onclick="ddmSubmitNPD()"><i class="ti ti-check"></i>${isEdit?'Save changes':'Submit new part design'}</button>
   </div>`;
 }
 
@@ -4604,11 +4619,23 @@ function ddmSubmitNPD(){
   if(!f.pn||!f.title){alert('Part Number and Title are required.');return;}
   if(!f.dal){alert('Design Assurance Level is required.');return;}
   if(!f.de1){alert('DE1 is required.');return;}
-  f.status='in-progress';
+  const editId=DDMST.editingNPDId;
+  if(!editId)f.status='in-progress';
   const rec=JSON.parse(JSON.stringify(f));
-  DDM_NPDS.push(rec);
-  DDMST.newPartForm=false;DDM_FORM_NPD=null;DDMST.sub='npd';render();
-  API.createNPD(rec).catch(err=>alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'));
+  if(editId){
+    // Editing an existing record's initiation form — status and every
+    // phase-gate/exit-criteria field already recorded against it (still
+    // present on `rec`, since the form was opened from a full clone)
+    // travel through untouched; only the fields this form exposes change.
+    const idx=DDM_NPDS.findIndex(x=>x.id===editId);
+    if(idx>=0)DDM_NPDS[idx]=rec;
+    DDMST.newPartForm=false;DDM_FORM_NPD=null;DDMST.editingNPDId=null;DDMST.activeNPD=editId;DDMST.sub='npd';render();
+    API.updateNPD(editId,rec).catch(err=>alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'));
+  } else {
+    DDM_NPDS.push(rec);
+    DDMST.newPartForm=false;DDM_FORM_NPD=null;DDMST.sub='npd';render();
+    API.createNPD(rec).catch(err=>alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'));
+  }
 }
 function ddmSubmitECO(){
   const f=DDM_FORM_ECO;
