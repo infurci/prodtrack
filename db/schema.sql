@@ -206,3 +206,47 @@ ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS wi_id TEXT REFERENCES work_inst
 -- {wiId, opId} identifying the source operation, which is still rendered
 -- live from that WI (steps/media follow WI edits just like the core ops).
 ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS extra_ops JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- ---------- DESIGN & DEVELOPMENT MANAGEMENT ----------
+-- New Part Design (NPD) records, Engineering Work Orders (EWO) and
+-- Engineering Change Orders (ECO). Each record's whole nested shape
+-- (phase gates, approvals, exit criteria, implementation tracking, etc.)
+-- is kept as-is in `data` — the frontend already treats these as
+-- arbitrarily-shaped objects it mutates in place and re-saves whole,
+-- the same way work_instructions.ops is a single JSONB blob rather than
+-- a normalised table.
+CREATE TABLE IF NOT EXISTS design_npds (
+  id          TEXT PRIMARY KEY,
+  data        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_by  INTEGER REFERENCES users(id),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+DROP TRIGGER IF EXISTS trg_npd_touch ON design_npds;
+CREATE TRIGGER trg_npd_touch
+  BEFORE UPDATE ON design_npds
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE TABLE IF NOT EXISTS design_ecos (
+  id          TEXT PRIMARY KEY,
+  data        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_by  INTEGER REFERENCES users(id),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+DROP TRIGGER IF EXISTS trg_eco_touch ON design_ecos;
+CREATE TRIGGER trg_eco_touch
+  BEFORE UPDATE ON design_ecos
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE TABLE IF NOT EXISTS design_ewos (
+  id          TEXT PRIMARY KEY,
+  data        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_by  INTEGER REFERENCES users(id),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+DROP TRIGGER IF EXISTS trg_ewo_touch ON design_ewos;
+CREATE TRIGGER trg_ewo_touch
+  BEFORE UPDATE ON design_ewos
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();

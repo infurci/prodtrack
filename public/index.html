@@ -389,6 +389,15 @@ const API = {
   updateWI(id,wi){ return this.req('PUT','/api/workinstructions/'+encodeURIComponent(id),wi); },
   addExtraOp(woId,wiId,opId){ return this.req('POST','/api/workorders/'+encodeURIComponent(woId)+'/extra-ops',{wiId,opId}); },
   removeExtraOp(woId,wiId,opId){ return this.req('DELETE','/api/workorders/'+encodeURIComponent(woId)+'/extra-ops',{wiId,opId}); },
+  listNPDs(){ return this.req('GET','/api/design/npds'); },
+  createNPD(n){ return this.req('POST','/api/design/npds',n); },
+  updateNPD(id,n){ return this.req('PUT','/api/design/npds/'+encodeURIComponent(id),n); },
+  listECOs(){ return this.req('GET','/api/design/ecos'); },
+  createECO(e){ return this.req('POST','/api/design/ecos',e); },
+  updateECO(id,e){ return this.req('PUT','/api/design/ecos/'+encodeURIComponent(id),e); },
+  listEWOs(){ return this.req('GET','/api/design/ewos'); },
+  createEWO(e){ return this.req('POST','/api/design/ewos',e); },
+  updateEWO(id,e){ return this.req('PUT','/api/design/ewos/'+encodeURIComponent(id),e); },
 };
 
 // Employee roster — powers name-autocomplete everywhere via a shared <datalist>.
@@ -501,6 +510,27 @@ async function bootData(){
     wis.forEach(w=>WIS.push(w));
   }catch(err){
     console.error('Failed to load work instructions:', err.message);
+  }
+  try{
+    const npds=await API.listNPDs();
+    DDM_NPDS.length=0;
+    npds.forEach(n=>DDM_NPDS.push(n));
+  }catch(err){
+    console.error('Failed to load part design records:', err.message);
+  }
+  try{
+    const ecos=await API.listECOs();
+    DDM_ECOS.length=0;
+    ecos.forEach(e=>DDM_ECOS.push(e));
+  }catch(err){
+    console.error('Failed to load engineering change orders:', err.message);
+  }
+  try{
+    const ewos=await API.listEWOs();
+    DDM_EWOS.length=0;
+    ewos.forEach(e=>DDM_EWOS.push(e));
+  }catch(err){
+    console.error('Failed to load engineering work orders:', err.message);
   }
   // Once both WOs and WIs are loaded, make sure every WO's routing
   // (order, steps, media) reflects its linked WI's current content.
@@ -4561,14 +4591,24 @@ function ddmRenderECOForm(){
   </div>`;
 }
 
+// Persist a Design & Dev record (NPD/ECO/EWO) back to the server after a
+// local mutation. Fire-and-forget, mirroring saveWO(): the UI has already
+// re-rendered from the local object, so this just needs to catch up the
+// database; a failure is surfaced but doesn't roll back the local change.
+async function persistNPD(n){ try{ await API.updateNPD(n.id,n); }catch(err){ alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'); } }
+async function persistECO(e){ try{ await API.updateECO(e.id,e); }catch(err){ alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'); } }
+async function persistEWO(e){ try{ await API.updateEWO(e.id,e); }catch(err){ alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'); } }
+
 function ddmSubmitNPD(){
   const f=DDM_FORM_NPD;
   if(!f.pn||!f.title){alert('Part Number and Title are required.');return;}
   if(!f.dal){alert('Design Assurance Level is required.');return;}
   if(!f.de1){alert('DE1 is required.');return;}
   f.status='in-progress';
-  DDM_NPDS.push(JSON.parse(JSON.stringify(f)));
+  const rec=JSON.parse(JSON.stringify(f));
+  DDM_NPDS.push(rec);
   DDMST.newPartForm=false;DDM_FORM_NPD=null;DDMST.sub='npd';render();
+  API.createNPD(rec).catch(err=>alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'));
 }
 function ddmSubmitECO(){
   const f=DDM_FORM_ECO;
@@ -4582,22 +4622,24 @@ function ddmSubmitECO(){
   if(docsEl)f.affectedDocuments=docsEl.value.split(',').map(s=>s.trim()).filter(Boolean);
   if(pnsEl)f.affectedPNs=pnsEl.value.split(',').map(s=>s.trim()).filter(Boolean);
   f.status='in-review';
-  DDM_ECOS.push(JSON.parse(JSON.stringify(f)));
+  const rec=JSON.parse(JSON.stringify(f));
+  DDM_ECOS.push(rec);
   DDMST.newECOForm=false;DDM_FORM_ECO=null;DDMST.sub='eco';render();
+  API.createECO(rec).catch(err=>alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'));
 }
-function ddmToggleNPD(id,phase,key,val){const n=DDM_NPDS.find(x=>x.id===id);if(!n)return;n[phase][key]=val;render();}
-function ddmToggleExit(id,key,val){const n=DDM_NPDS.find(x=>x.id===id);if(!n)return;n.exitCriteria[key]=val;render();}
+function ddmToggleNPD(id,phase,key,val){const n=DDM_NPDS.find(x=>x.id===id);if(!n)return;n[phase][key]=val;render();persistNPD(n);}
+function ddmToggleExit(id,key,val){const n=DDM_NPDS.find(x=>x.id===id);if(!n)return;n.exitCriteria[key]=val;render();persistNPD(n);}
 function ddmCloseGate(id,phase,nextPhase){
   const n=DDM_NPDS.find(x=>x.id===id);if(!n)return;
   const ph=n[phase];
   if(!ph.de1Review||!ph.cveReview||!ph.configControlled){alert('Cannot close gate: DE1 review, CVE review and configuration control must all be confirmed first.');return;}
   ph.gateStatus='complete';ph.gateDate=new Date().toISOString().split('T')[0];
-  n.phase=nextPhase;n.status='in-progress';render();
+  n.phase=nextPhase;n.status='in-progress';render();persistNPD(n);
 }
 function ddmReleasePart(id){
   const n=DDM_NPDS.find(x=>x.id===id);if(!n)return;
   if(!Object.values(n.exitCriteria).every(v=>v)){alert('All exit criteria must be confirmed before release.');return;}
-  n.status='released';n.phase='Production Release';render();
+  n.status='released';n.phase='Production Release';render();persistNPD(n);
 }
 function ddmSignECO(id,key){
   const e=DDM_ECOS.find(x=>x.id===id);if(!e)return;
@@ -4605,12 +4647,17 @@ function ddmSignECO(id,key){
   if(!name)return;
   e.approvals[key].signed=true;e.approvals[key].name=name;e.approvals[key].date=new Date().toISOString().split('T')[0];
   if(Object.values(e.approvals).every(a=>a.signed))e.status='ccb-approved';
-  render();
+  render();persistECO(e);
 }
-function ddmToggleImpl(id,key,val){const e=DDM_ECOS.find(x=>x.id===id);if(!e)return;e.implementation[key]=val;render();}
-function ddmIssueECN(id){const e=DDM_ECOS.find(x=>x.id===id);if(!e)return;e.implementation.ecnRef='ECN-2024-00'+DDM_ECOS.length;e.implementation.ecnStatus='issued';e.status='ccb-approved';render();}
-function ddmCloseECO(id){const e=DDM_ECOS.find(x=>x.id===id);if(!e)return;e.status='closed';e.implementation.closedDate=new Date().toISOString().split('T')[0];render();}
-function ddmNewEWO(){const npdId=DDM_NPDS.length?DDM_NPDS[0].id:'';DDM_EWOS.push({id:ddmNewEWOId(),npdId,title:'New EWO — enter title',assignedTo:ST.role,discipline:'',status:'open',priority:'medium',opened:new Date().toISOString().split('T')[0],due:'',hours:0,hoursLogged:0,deliverable:'',notes:''});DDMST.sub='ewo';render();}
+function ddmToggleImpl(id,key,val){const e=DDM_ECOS.find(x=>x.id===id);if(!e)return;e.implementation[key]=val;render();persistECO(e);}
+function ddmIssueECN(id){const e=DDM_ECOS.find(x=>x.id===id);if(!e)return;e.implementation.ecnRef='ECN-2024-00'+DDM_ECOS.length;e.implementation.ecnStatus='issued';e.status='ccb-approved';render();persistECO(e);}
+function ddmCloseECO(id){const e=DDM_ECOS.find(x=>x.id===id);if(!e)return;e.status='closed';e.implementation.closedDate=new Date().toISOString().split('T')[0];render();persistECO(e);}
+function ddmNewEWO(){
+  const npdId=DDM_NPDS.length?DDM_NPDS[0].id:'';
+  const ewo={id:ddmNewEWOId(),npdId,title:'New EWO — enter title',assignedTo:ST.role,discipline:'',status:'open',priority:'medium',opened:new Date().toISOString().split('T')[0],due:'',hours:0,hoursLogged:0,deliverable:'',notes:''};
+  DDM_EWOS.push(ewo);DDMST.sub='ewo';render();
+  API.createEWO(ewo).catch(err=>alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'));
+}
 function ddmEWODetail(id){
   const e=DDM_EWOS.find(x=>x.id===id);if(!e)return;
   const h=`<div class="modal-title">${e.id}</div><div class="modal-sub">${e.title}</div>`;
@@ -4618,8 +4665,8 @@ function ddmEWODetail(id){
   const f=`<button class="btn" onclick="closeModal('mA')">Close</button>`;
   document.getElementById('mA-hdr').innerHTML=h;document.getElementById('mA-body').innerHTML=b;document.getElementById('mA-foot').innerHTML=f;document.getElementById('mA').classList.add('open');
 }
-function ddmCloseEWO(id){const e=DDM_EWOS.find(x=>x.id===id);if(e)e.status='closed';closeModal('mA');render();}
-function ddmStartEWO(id){const e=DDM_EWOS.find(x=>x.id===id);if(e)e.status='in-progress';closeModal('mA');render();}
+function ddmCloseEWO(id){const e=DDM_EWOS.find(x=>x.id===id);if(!e)return;e.status='closed';closeModal('mA');render();persistEWO(e);}
+function ddmStartEWO(id){const e=DDM_EWOS.find(x=>x.id===id);if(!e)return;e.status='in-progress';closeModal('mA');render();persistEWO(e);}
 
 
 /* bootstrap */

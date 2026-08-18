@@ -143,6 +143,55 @@ const DOA_DOCS = [
   {docNo:'VMF-042-006',level:'VMF',title:'Aircraft Technical Logbook',rev:'A00',status:'approved',date:'2022-03-01',owner:'FTO/HoFT',verifiedBy:'AEDP',approvedBy:'COA',storage:'WM',compliance:'21.A.239',description:'Standard technical logbook form for recording flight hours, defects and maintenance actions per aircraft.',applicability:'Flight Test Organisation, Maintenance',approvals:{owner:{signed:true,name:'FTO/HoFT',date:'2022-02-27'},verifiedBy:{signed:true,name:'AEDP',date:'2022-02-28'},approvedBy:{signed:true,name:'COA',date:'2022-03-01'}},revHistory:[{rev:'A00',date:'2022-03-01',editor:'FTO/HoFT',object:'Initial issue'}],tags:['Form','Logbook'],linkedDocs:[]},
 ];
 
+// Design & Development Management — New Part Design records, Engineering
+// Work Orders and Engineering Change Orders. Mirrors the frontend's old
+// client-only mock arrays so seeded environments look identical to what
+// the app used to show before these got real backend persistence.
+const DDM_NPDS = [
+  {id:'NPD-2024-001',pn:'PRT-V21-100-003',title:'Canopy Frame — Carbon/Epoxy',system:'Airframe',partType:'Composite primary structure',dal:'C — Major',de1:'R. Pellin',de2:'',cve:'C. Neves',qm:'QMS_MR',cm:'DCC_MR',me:'MEN_TM',devqa:'DevQA_TM',created:'2024-04-01',initiator:'R. Pellin',phase:'Detailed Design',status:'in-progress',description:'Carbon/epoxy canopy frame for VHUNTER P1. Wet layup + autoclave cure. Primary structure DAL C.',entryRequirements:'Aircraft system requirements v1.3, Initial sizing loads DS-100-002',
+    architecturePhase:{sddChapter:'Canopy Integration — Aircraft SDD §6.4',interfaceDoc:'ICD-100-003 Canopy-to-Fuselage Interface',reviewChecklist:'CHK-V21-ARCH-003',configControlled:true,de2Review:true,de1Review:true,cveReview:false,qmReview:false,approvalDate:'',approver:'',gateStatus:'complete',gateDate:'2024-04-20'},
+    prelimDesignPhase:{icdRef:'ICD-100-003 Rev A',moldSurfaces3D:'CAD-100-003-OML-RevA',loadSpecDoc:'DS-100-003 Canopy Load Spec',reviewChecklist:'CHK-V21-PDR-003',configControlled:true,de2Review:true,de1Review:true,cveReview:true,qmReview:false,approvalDate:'',approver:'',gateStatus:'complete',gateDate:'2024-05-25',pdrHeld:true,pdrDate:'2024-05-25'},
+    detailedDesignPhase:{engineeringDwgRef:'DWG-100-003-A',productionDwgRef:'DWG-100-003-P-A',assemblyDwgRef:'DWG-100-003-ASM-A',threeDModelRef:'CAD-100-003-DET-RevA',stressAnalysisRef:'RPT-STR-003',freqAnalysisRef:'',aeroAnalysisRef:'',designDescRef:'DD-100-003',reviewChecklist:'CHK-V21-CDR-003',de2Review:false,de1Review:false,cveReview:false,qmReview:false,configControlled:false,approvalDate:'',approver:'',gateStatus:'in-progress',gateDate:'2024-09-01',cdrHeld:false,bundleReleased:false},
+    exitCriteria:{allDocsCCd:false,allCVESigned:false,qmWorkInstrCheck:false,noUncompliancies:false,finalDeclCompliance:false},
+    qaIssues:[],prLinks:[],ecnLinks:[],markingMethod:'D2',materialSpec:'HexPly M21 CF/Epoxy UD',notes:'Post-cure indicator label required per VMI-001-002 §3.1.7.'},
+  {id:'NPD-2024-002',pn:'PRT-V21-700-001',title:'Nose Radome — Glass/Epoxy',system:'Airframe',partType:'Composite secondary structure',dal:'D — Minor',de1:'R. Pellin',de2:'',cve:'',qm:'QMS_MR',cm:'DCC_MR',me:'',devqa:'',created:'2024-06-01',initiator:'R. Pellin',phase:'Architecture',status:'open',description:'Glass fibre radome for forward radar/sensor bay. RF-transparent structure.',entryRequirements:'System requirements pending',
+    architecturePhase:{sddChapter:'',interfaceDoc:'',reviewChecklist:'',configControlled:false,de2Review:false,de1Review:false,cveReview:false,qmReview:false,approvalDate:'',approver:'',gateStatus:'open',gateDate:''},
+    prelimDesignPhase:{icdRef:'',moldSurfaces3D:'',loadSpecDoc:'',reviewChecklist:'',configControlled:false,de2Review:false,de1Review:false,cveReview:false,qmReview:false,approvalDate:'',approver:'',gateStatus:'not-started',gateDate:'',pdrHeld:false,pdrDate:''},
+    detailedDesignPhase:{engineeringDwgRef:'',productionDwgRef:'',assemblyDwgRef:'',threeDModelRef:'',stressAnalysisRef:'',freqAnalysisRef:'',aeroAnalysisRef:'',designDescRef:'',reviewChecklist:'',de2Review:false,de1Review:false,cveReview:false,qmReview:false,configControlled:false,approvalDate:'',approver:'',gateStatus:'not-started',gateDate:'',cdrHeld:false,bundleReleased:false},
+    exitCriteria:{allDocsCCd:false,allCVESigned:false,qmWorkInstrCheck:false,noUncompliancies:false,finalDeclCompliance:false},
+    qaIssues:[],prLinks:[],ecnLinks:[],markingMethod:'D2',materialSpec:'',notes:''},
+];
+
+const DDM_EWOS = [
+  {id:'EWO-2024-001',npdId:'NPD-2024-001',title:'Develop preliminary 3D model and OML mold surfaces — canopy frame',assignedTo:'R. Pellin',discipline:'Airframe',status:'in-progress',priority:'high',opened:'2024-04-25',due:'2024-06-30',hours:40,hoursLogged:22,deliverable:'CAD-100-003-OML-RevA released in PLM',notes:'Coordinate with FCS team on canopy actuator interface before OML finalised.'},
+  {id:'EWO-2024-002',npdId:'NPD-2024-001',title:'Structural sizing — canopy frame under limit load conditions',assignedTo:'Structures CVE',discipline:'Structures',status:'open',priority:'high',opened:'2024-05-10',due:'2024-07-15',hours:60,hoursLogged:0,deliverable:'RPT-STR-003 Stress analysis report',notes:'Use DS-100-003 load cases. Check panel buckling mode.'},
+  {id:'EWO-2024-003',npdId:'NPD-2024-001',title:'Engineering drawing package — canopy frame',assignedTo:'R. Pellin',discipline:'Airframe',status:'open',priority:'medium',opened:'2024-05-20',due:'2024-08-01',hours:50,hoursLogged:0,deliverable:'DWG-100-003-A, DWG-100-003-P-A, DWG-100-003-ASM-A',notes:'Use drawing template VMF-010-059. 4-eyes check required.'},
+  {id:'EWO-2024-004',npdId:'NPD-2024-002',title:'Architecture definition — nose radome concept',assignedTo:'R. Pellin',discipline:'Airframe',status:'open',priority:'low',opened:'2024-06-05',due:'2024-08-30',hours:20,hoursLogged:0,deliverable:'Radome architecture section in Aircraft SDD',notes:'Coordinate RF requirements with Avionics team.'},
+];
+
+const DDM_ECOS = [
+  {id:'ECO-2024-001',linkedPn:'PRT-V21-100-001',linkedNPD:'NPD-2024-001',title:'Increase aft spar CFRP local layup thickness +15% at rib station R8',changeClass:'Class I — affects airworthiness / safety / interchangeability / interface',system:'Airframe',discipline:'Structures',initiator:'R. Pellin',initiatedDate:'2024-05-12',status:'ccb-approved',priority:'high',
+    reasonForChange:'Static load test showed local buckling margin <1.0 at rib 8 under limit load. Margin increase required before first flight.',problemRef:'PR-2024-001',
+    preChangeConfig:'DWG-100-001-A Rev A — 8 plies UD 0° local reinforcement',postChangeConfig:'DWG-100-001-A Rev B — 10 plies UD 0° + 2 plies ±45° local reinforcement',
+    impactWeight:'+0.18 kg (acceptable — within 2 kg margin)',impactCost:'Material cost +€240 per unit',impactSchedule:'2 weeks — new layup schedule',
+    impactAirworthiness:'Improves structural margin. No certification impact (DAL C). CVE reviewed.',impactInterface:'No interface change. OML unchanged.',impactOtherSystems:'None',
+    classificationJustification:'Primary structure modification — affects structural integrity. Class I per VMP-001-002 §4.1.1.',
+    affectedDocuments:['DWG-100-001-A','MBoM-MSN001','PS-11-002 Layup Procedure'],affectedPNs:['PRT-V21-100-001 Rev B'],
+    approvals:{de1:{signed:true,name:'R. Pellin',date:'2024-05-14',role:'Design Engineer (DE1)'},de2:{signed:false,name:'',date:'',role:'Senior Design Engineer (DE2)'},cve:{signed:true,name:'C. Neves',date:'2024-05-17',role:'CVE — Structures'},qm:{signed:true,name:'QMS_MR',date:'2024-05-18',role:'Quality Manager'},cm:{signed:true,name:'DCC_MR',date:'2024-05-19',role:'Configuration Manager'},ccb1:{signed:true,name:'CCB Chair',date:'2024-05-20',role:'CCB1 Approval'},ccb2:{signed:false,name:'',date:'',role:'CCB2 — Full detail review'},hdo:{signed:false,name:'',date:'',role:'Head of Design (HDO)'}},
+    implementation:{ecnRef:'ECN-2024-001',ecnStatus:'issued',implementedBy:'R. Pellin',implementedDate:'',verifiedBy:'',verifiedDate:'',ebomupdated:false,plmUpdated:false,drawingsUpdated:false,closedDate:''},
+    notes:'Rework MSN001 before next ground run. Document construction log per VMF-002-004.'},
+  {id:'ECO-2024-002',linkedPn:'PRT-V21-200-001',linkedNPD:'',title:'FCS servo actuator gain schedule update — Rev B to Rev C',changeClass:'Class I — affects airworthiness / safety / interchangeability / interface',system:'Flight Control System',discipline:'Avionics / SW',initiator:'FCS Team',initiatedDate:'2024-06-01',status:'in-review',priority:'high',
+    reasonForChange:'Flight test simulation shows oscillatory response at 40% throttle. Gain schedule requires update per control law maturity review.',problemRef:'PR-2024-002',
+    preChangeConfig:'SW v1.1.0 — Gain table G-FCS-001 Rev B',postChangeConfig:'SW v1.2.0 — Gain table G-FCS-001 Rev C',
+    impactWeight:'None',impactCost:'SW development 3 weeks effort',impactSchedule:'3 weeks to develop, test, verify DAL A',
+    impactAirworthiness:'DAL A software change. Full DO-178C qualification loop required.',impactInterface:'No hardware interface change.',impactOtherSystems:'Autopilot tuning may require adjustment.',
+    classificationJustification:'Software change affecting flight safety — DAL A. Class I per VMP-001-002.',
+    affectedDocuments:['SW-FCS-001 SW Design Doc','PSAC-FCS-001','SVP-FCS-001'],affectedPNs:['PRT-V21-200-001 Rev C'],
+    approvals:{de1:{signed:true,name:'FCS Lead',date:'2024-06-03',role:'Design Engineer (DE1)'},de2:{signed:false,name:'',date:'',role:'Senior Design Engineer (DE2)'},cve:{signed:false,name:'',date:'',role:'CVE — Avionics'},qm:{signed:false,name:'',date:'',role:'Quality Manager'},cm:{signed:false,name:'',date:'',role:'Configuration Manager'},ccb1:{signed:false,name:'',date:'',role:'CCB1 Approval'},ccb2:{signed:false,name:'',date:'',role:'CCB2 — Full detail review'},hdo:{signed:false,name:'',date:'',role:'Head of Design (HDO)'}},
+    implementation:{ecnRef:'',ecnStatus:'not-issued',implementedBy:'',implementedDate:'',verifiedBy:'',verifiedDate:'',ebomupdated:false,plmUpdated:false,drawingsUpdated:false,closedDate:''},
+    notes:'DO-178C compliance evidence must accompany CCB2 package.'},
+];
+
 const STARTER_USERS = [
   { username:'admin',    full_name:'System Administrator', role:'admin',    envKey:'SEED_ADMIN_PW' },
   { username:'engineer', full_name:'Engineering',          role:'engineer', envKey:'SEED_ENGINEER_PW' },
@@ -231,6 +280,34 @@ const STARTER_USERS = [
       );
     }
     console.log(`✓ Seeded ${DOA_DOCS.length} DOA documents.`);
+
+    // Design & Development Management — each record's full nested shape
+    // is stored as-is in a single `data` JSONB column (same pattern as
+    // work_instructions.ops).
+    for (const n of DDM_NPDS) {
+      await pool.query(
+        `INSERT INTO design_npds (id, data) VALUES ($1,$2) ON CONFLICT (id) DO NOTHING`,
+        [n.id, JSON.stringify(n)]
+      );
+    }
+    console.log(`✓ Seeded ${DDM_NPDS.length} part design records.`);
+
+    for (const e of DDM_EWOS) {
+      await pool.query(
+        `INSERT INTO design_ewos (id, data) VALUES ($1,$2) ON CONFLICT (id) DO NOTHING`,
+        [e.id, JSON.stringify(e)]
+      );
+    }
+    console.log(`✓ Seeded ${DDM_EWOS.length} engineering work orders.`);
+
+    for (const e of DDM_ECOS) {
+      await pool.query(
+        `INSERT INTO design_ecos (id, data) VALUES ($1,$2) ON CONFLICT (id) DO NOTHING`,
+        [e.id, JSON.stringify(e)]
+      );
+    }
+    console.log(`✓ Seeded ${DDM_ECOS.length} engineering change orders.`);
+
     console.log('\nDone. You can now start the server.');
   } catch (err) {
     console.error('✗ Seed failed:', err.message);
