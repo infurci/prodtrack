@@ -16,6 +16,14 @@ CREATE TABLE IF NOT EXISTS users (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Access level is independent of role: role decides what a user can SEE
+-- (which panels/records), access_level decides whether they can change
+-- ANYTHING at all. 'viewer' can read everything their role would normally
+-- see but every create/update/delete/sign/approve endpoint rejects them —
+-- enforced once, globally, in middleware/viewerGuard.js. Defaults to
+-- 'full' so every existing account keeps today's behaviour unchanged.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS access_level TEXT NOT NULL DEFAULT 'full' CHECK (access_level IN ('full','viewer'));
+
 -- ---------- WORK ORDERS ----------
 -- Core fields are real columns (so we can filter/sort/report on them).
 -- The nested operations array is kept as JSONB to preserve the exact

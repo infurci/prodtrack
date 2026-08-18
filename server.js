@@ -6,11 +6,16 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const pool = require('./db/pool');
+const { blockViewerWrites } = require('./middleware/viewerGuard');
 
 const app = express();
 
 app.use(express.json({ limit: '5mb' }));
 app.use(cookieParser());
+
+// Blanket read-only enforcement for 'viewer' access-level accounts —
+// must run before every feature router so it sees every /api request.
+app.use('/api', blockViewerWrites);
 
 // --- API routes ---
 app.use('/api/auth', require('./routes/auth'));

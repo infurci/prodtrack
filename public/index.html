@@ -330,7 +330,7 @@ setInterval(()=>{const e=document.getElementById('clk');if(e)e.textContent=new D
 /* ════════════════════════════════════════════
    STATE
 ════════════════════════════════════════════ */
-const ST={role:'engineer',userId:null,view:'dashboard',clocked:{},editingWI:null,editingOpId:null,dragSrcIdx:null,mediaURLs:{}};
+const ST={role:'engineer',userId:null,view:'dashboard',clocked:{},editingWI:null,editingOpId:null,dragSrcIdx:null,mediaURLs:{},accessLevel:'full',isViewer:false};
 /* ══════════════════════════════════════════════════════════
    PRODTRACK API LAYER (Layer 1) — added for server persistence
    ══════════════════════════════════════════════════════════ */
@@ -468,10 +468,12 @@ function applySession(user){
   ST.role = user.role;
   ST.userId = user.id;
   ST.user = user;
+  ST.accessLevel = user.accessLevel || 'full';
+  ST.isViewer = ST.accessLevel === 'viewer';
   const sel=document.querySelector('.role-sel');
   if(sel){
     // Lock the role to the authenticated user (no free switching).
-    sel.innerHTML='<option>'+user.full_name+' · '+user.role+'</option>';
+    sel.innerHTML='<option>'+user.full_name+' · '+user.role+(ST.isViewer?' · View only':'')+'</option>';
     sel.disabled=true;
   }
 }
@@ -2978,19 +2980,20 @@ function renderManageUsers(){
     <button class="btn btn-a" onclick="openAddEmployee()"><i class="ti ti-plus"></i>Add employee</button>
   </div>
   <div class="card">
-    <table class="tbl"><thead><tr><th>Name</th><th style="width:90px">Active</th><th style="width:110px">Login access</th><th style="width:100px">Username</th><th style="width:90px">Role</th><th style="width:190px">Actions</th></tr></thead><tbody>
+    <table class="tbl"><thead><tr><th>Name</th><th style="width:90px">Active</th><th style="width:110px">Login access</th><th style="width:100px">Username</th><th style="width:90px">Role</th><th style="width:90px">Access</th><th style="width:230px">Actions</th></tr></thead><tbody>
     ${EMPLOYEES_FULL.map(e=>`<tr>
       <td style="font-weight:600;font-size:12px">${e.fullName}</td>
       <td>${e.active?'<span class="bdg b-gn">Active</span>':'<span class="bdg b-gy">Inactive</span>'}</td>
       <td>${e.hasAccess?'<span class="bdg b-bl">Granted</span>':'<span class="bdg b-gy">None</span>'}</td>
       <td style="font-size:11px;color:var(--t2)">${e.username||'—'}</td>
       <td style="font-size:11px;color:var(--t2)">${e.role||'—'}</td>
+      <td>${e.hasAccess?(e.accessLevel==='viewer'?'<span class="bdg b-am"><i class="ti ti-eye" style="font-size:9px"></i> Viewer</span>':'<span class="bdg b-gn">Full</span>'):'—'}</td>
       <td><div style="display:flex;gap:4px;flex-wrap:wrap">
-        ${e.hasAccess?`<button class="btn btn-s" style="color:var(--red)" onclick="revokeEmployeeAccess(${e.id})"><i class="ti ti-lock"></i>Revoke</button>`:`<button class="btn btn-s btn-a" onclick="openGrantAccess(${e.id})"><i class="ti ti-key"></i>Grant access</button>`}
+        ${e.hasAccess?`<button class="btn btn-s" onclick="openGrantAccess(${e.id})"><i class="ti ti-edit"></i>Edit access</button><button class="btn btn-s" style="color:var(--red)" onclick="revokeEmployeeAccess(${e.id})"><i class="ti ti-lock"></i>Revoke</button>`:`<button class="btn btn-s btn-a" onclick="openGrantAccess(${e.id})"><i class="ti ti-key"></i>Grant access</button>`}
         <button class="btn btn-s" onclick="toggleEmployeeActive(${e.id},${!e.active})">${e.active?'Deactivate':'Reactivate'}</button>
       </div></td>
     </tr>`).join('')}
-    ${!EMPLOYEES_FULL.length?`<tr><td colspan="6" style="text-align:center;padding:18px;color:var(--t3);font-size:12px">${EMPLOYEES_FULL_LOADED?'No employees yet — add the first one above.':'Loading…'}</td></tr>`:''}
+    ${!EMPLOYEES_FULL.length?`<tr><td colspan="7" style="text-align:center;padding:18px;color:var(--t3);font-size:12px">${EMPLOYEES_FULL_LOADED?'No employees yet — add the first one above.':'Loading…'}</td></tr>`:''}
     </tbody></table>
   </div>`;
 }
@@ -3013,15 +3016,17 @@ async function toggleEmployeeActive(id,active){
 }
 function openGrantAccess(id){
   const emp=EMPLOYEES_FULL.find(e=>e.id===id);if(!emp)return;
-  const username=prompt('Choose a username for '+emp.fullName+':');if(!username)return;
-  const password=prompt('Choose an initial password for '+emp.fullName+':');if(!password)return;
-  const role=prompt('Role (operator, quality, engineer, or admin):','operator');if(!role)return;
-  const confirmPassword=prompt('Confirm YOUR OWN password to authorise granting this access:');if(!confirmPassword)return;
-  grantEmployeeAccess(id,username.trim(),password,role.trim(),confirmPassword);
+  const isEdit=emp.hasAccess;
+  const username=prompt((isEdit?'Username for ':'Choose a username for ')+emp.fullName+':',emp.username||'');if(!username)return;
+  const password=prompt(isEdit?'New password for '+emp.fullName+' — they will need this to log in from now on:':'Choose an initial password for '+emp.fullName+':');if(!password)return;
+  const role=prompt('Role (operator, quality, engineer, or admin):',emp.role||'operator');if(!role)return;
+  const accessLevel=prompt('Access level — "full" (can create/edit/sign as normal) or "viewer" (read-only — can never create, edit, sign or delete anything):',emp.accessLevel||'full');if(!accessLevel)return;
+  const confirmPassword=prompt('Confirm YOUR OWN password to authorise this:');if(!confirmPassword)return;
+  grantEmployeeAccess(id,username.trim(),password,role.trim(),accessLevel.trim().toLowerCase(),confirmPassword);
 }
-async function grantEmployeeAccess(id,username,password,role,confirmPassword){
+async function grantEmployeeAccess(id,username,password,role,accessLevel,confirmPassword){
   try{
-    const emp=await API.grantAccess(id,{username,password,role,confirmPassword});
+    const emp=await API.grantAccess(id,{username,password,role,accessLevel,confirmPassword});
     const idx=EMPLOYEES_FULL.findIndex(e=>e.id===id);if(idx>=0)EMPLOYEES_FULL[idx]=emp;
     render();
   }catch(err){ alert('Could not grant access: '+err.message); }
