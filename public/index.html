@@ -220,6 +220,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
       <div class="ntab" data-v="qms" onclick="nav('qms')"><i class="ti ti-certificate"></i>QMS</div>
       <div class="ntab" data-v="doa" onclick="nav('doa')"><i class="ti ti-plane"></i>DOA / DAS</div>
       <div class="ntab" data-v="ddm" onclick="nav('ddm')"><i class="ti ti-pencil-plus"></i>Design &amp; Dev</div>
+      <div class="ntab" data-v="docreg" id="docreg-tab" onclick="nav('docreg')" style="display:none"><i class="ti ti-clipboard-data"></i>Doc Register</div>
     </div>
     <div class="nav-right">
       <div class="role-pill"><i class="ti ti-user" style="font-size:13px"></i>
@@ -330,7 +331,7 @@ setInterval(()=>{const e=document.getElementById('clk');if(e)e.textContent=new D
 /* ════════════════════════════════════════════
    STATE
 ════════════════════════════════════════════ */
-const ST={role:'engineer',userId:null,view:'dashboard',clocked:{},editingWI:null,editingOpId:null,dragSrcIdx:null,mediaURLs:{},accessLevel:'full',isViewer:false};
+const ST={role:'engineer',userId:null,view:'dashboard',clocked:{},editingWI:null,editingOpId:null,dragSrcIdx:null,mediaURLs:{},accessLevel:'full',isViewer:false,permissions:{}};
 /* ══════════════════════════════════════════════════════════
    PRODTRACK API LAYER (Layer 1) — added for server persistence
    ══════════════════════════════════════════════════════════ */
@@ -398,12 +399,20 @@ const API = {
   listEWOs(){ return this.req('GET','/api/design/ewos'); },
   createEWO(e){ return this.req('POST','/api/design/ewos',e); },
   updateEWO(id,e){ return this.req('PUT','/api/design/ewos/'+encodeURIComponent(id),e); },
+  listDocRegister(){ return this.req('GET','/api/doc-register'); },
+  createDocRegisterEntry(e){ return this.req('POST','/api/doc-register',e); },
+  updateDocRegisterEntry(id,e){ return this.req('PUT','/api/doc-register/'+encodeURIComponent(id),e); },
+  deleteDocRegisterEntry(id){ return this.req('DELETE','/api/doc-register/'+encodeURIComponent(id)); },
 };
 
 // Employee roster — powers name-autocomplete everywhere via a shared <datalist>.
 let EMPLOYEES = [];
 let EMPLOYEES_FULL = [];
 let EMPLOYEES_FULL_LOADED = false;
+
+// Document & Drawing Management Register — only fetched at boot for
+// quality / permissions.ddmr users (see bootData()).
+let DOCREG = [];
 function refreshEmpDatalist(){
   let dl=document.getElementById('emp-list');
   if(!dl){ dl=document.createElement('datalist'); dl.id='emp-list'; document.body.appendChild(dl); }
@@ -470,12 +479,18 @@ function applySession(user){
   ST.user = user;
   ST.accessLevel = user.accessLevel || 'full';
   ST.isViewer = ST.accessLevel === 'viewer';
+  ST.permissions = user.permissions || {};
   const sel=document.querySelector('.role-sel');
   if(sel){
     // Lock the role to the authenticated user (no free switching).
     sel.innerHTML='<option>'+user.full_name+' · '+user.role+(ST.isViewer?' · View only':'')+'</option>';
     sel.disabled=true;
   }
+  // The Doc Register tab only exists for quality, or a user explicitly
+  // granted the 'ddmr' permission — hidden entirely otherwise, not just
+  // blocked, since the register itself is meant to stay private.
+  const docregTab=document.getElementById('docreg-tab');
+  if(docregTab) docregTab.style.display=(ST.role==='quality'||ST.permissions.ddmr===true)?'':'none';
 }
 
 async function logout(){
@@ -533,6 +548,15 @@ async function bootData(){
     ewos.forEach(e=>DDM_EWOS.push(e));
   }catch(err){
     console.error('Failed to load engineering work orders:', err.message);
+  }
+  if(ST.role==='quality'||ST.permissions.ddmr===true){
+    try{
+      const rows=await API.listDocRegister();
+      DOCREG.length=0;
+      rows.forEach(r=>DOCREG.push(r));
+    }catch(err){
+      console.error('Failed to load document register:', err.message);
+    }
   }
   // Once both WOs and WIs are loaded, make sure every WO's routing
   // (order, steps, media) reflects its linked WI's current content.
@@ -822,7 +846,7 @@ function canApprove(){return['quality','supervisor','engineer'].includes(ST.role
 ════════════════════════════════════════════ */
 function render(){
   const mc=document.getElementById('mc');
-  const views={dashboard:vDash,production:vProd,wi:vWI,qgates:vQG,trace:vTrace,qms:vQMS,doa:vDOA,ddm:vDDM};
+  const views={dashboard:vDash,production:vProd,wi:vWI,qgates:vQG,trace:vTrace,qms:vQMS,doa:vDOA,ddm:vDDM,docreg:vDocRegister};
   mc.innerHTML=(views[ST.view]||vDash)();
 }
 
@@ -2980,7 +3004,7 @@ function renderManageUsers(){
     <button class="btn btn-a" onclick="openAddEmployee()"><i class="ti ti-plus"></i>Add employee</button>
   </div>
   <div class="card">
-    <table class="tbl"><thead><tr><th>Name</th><th style="width:90px">Active</th><th style="width:110px">Login access</th><th style="width:100px">Username</th><th style="width:90px">Role</th><th style="width:90px">Access</th><th style="width:230px">Actions</th></tr></thead><tbody>
+    <table class="tbl"><thead><tr><th>Name</th><th style="width:90px">Active</th><th style="width:110px">Login access</th><th style="width:100px">Username</th><th style="width:90px">Role</th><th style="width:90px">Access</th><th style="width:90px">Doc Register</th><th style="width:230px">Actions</th></tr></thead><tbody>
     ${EMPLOYEES_FULL.map(e=>`<tr>
       <td style="font-weight:600;font-size:12px">${e.fullName}</td>
       <td>${e.active?'<span class="bdg b-gn">Active</span>':'<span class="bdg b-gy">Inactive</span>'}</td>
@@ -2988,12 +3012,13 @@ function renderManageUsers(){
       <td style="font-size:11px;color:var(--t2)">${e.username||'—'}</td>
       <td style="font-size:11px;color:var(--t2)">${e.role||'—'}</td>
       <td>${e.hasAccess?(e.accessLevel==='viewer'?'<span class="bdg b-am"><i class="ti ti-eye" style="font-size:9px"></i> Viewer</span>':'<span class="bdg b-gn">Full</span>'):'—'}</td>
+      <td>${e.hasAccess?(e.ddmrAccess?'<span class="bdg b-bl"><i class="ti ti-clipboard-data" style="font-size:9px"></i> Granted</span>':'<span class="bdg b-gy">—</span>'):'—'}</td>
       <td><div style="display:flex;gap:4px;flex-wrap:wrap">
         ${e.hasAccess?`<button class="btn btn-s" onclick="openGrantAccess(${e.id})"><i class="ti ti-edit"></i>Edit access</button><button class="btn btn-s" style="color:var(--red)" onclick="revokeEmployeeAccess(${e.id})"><i class="ti ti-lock"></i>Revoke</button>`:`<button class="btn btn-s btn-a" onclick="openGrantAccess(${e.id})"><i class="ti ti-key"></i>Grant access</button>`}
         <button class="btn btn-s" onclick="toggleEmployeeActive(${e.id},${!e.active})">${e.active?'Deactivate':'Reactivate'}</button>
       </div></td>
     </tr>`).join('')}
-    ${!EMPLOYEES_FULL.length?`<tr><td colspan="7" style="text-align:center;padding:18px;color:var(--t3);font-size:12px">${EMPLOYEES_FULL_LOADED?'No employees yet — add the first one above.':'Loading…'}</td></tr>`:''}
+    ${!EMPLOYEES_FULL.length?`<tr><td colspan="8" style="text-align:center;padding:18px;color:var(--t3);font-size:12px">${EMPLOYEES_FULL_LOADED?'No employees yet — add the first one above.':'Loading…'}</td></tr>`:''}
     </tbody></table>
   </div>`;
 }
@@ -3021,12 +3046,13 @@ function openGrantAccess(id){
   const password=prompt(isEdit?'New password for '+emp.fullName+' — they will need this to log in from now on:':'Choose an initial password for '+emp.fullName+':');if(!password)return;
   const role=prompt('Role (operator, quality, engineer, or admin):',emp.role||'operator');if(!role)return;
   const accessLevel=prompt('Access level — "full" (can create/edit/sign as normal) or "viewer" (read-only — can never create, edit, sign or delete anything):',emp.accessLevel||'full');if(!accessLevel)return;
+  const ddmrAns=prompt('Grant access to the Document & Drawing Management Register (DDMR)? yes/no:',emp.ddmrAccess?'yes':'no');if(ddmrAns===null)return;
   const confirmPassword=prompt('Confirm YOUR OWN password to authorise this:');if(!confirmPassword)return;
-  grantEmployeeAccess(id,username.trim(),password,role.trim(),accessLevel.trim().toLowerCase(),confirmPassword);
+  grantEmployeeAccess(id,username.trim(),password,role.trim(),accessLevel.trim().toLowerCase(),/^y/i.test(ddmrAns.trim()),confirmPassword);
 }
-async function grantEmployeeAccess(id,username,password,role,accessLevel,confirmPassword){
+async function grantEmployeeAccess(id,username,password,role,accessLevel,ddmrAccess,confirmPassword){
   try{
-    const emp=await API.grantAccess(id,{username,password,role,accessLevel,confirmPassword});
+    const emp=await API.grantAccess(id,{username,password,role,accessLevel,ddmrAccess,confirmPassword});
     const idx=EMPLOYEES_FULL.findIndex(e=>e.id===id);if(idx>=0)EMPLOYEES_FULL[idx]=emp;
     render();
   }catch(err){ alert('Could not grant access: '+err.message); }
@@ -4700,6 +4726,190 @@ function ddmEWODetail(id){
 function ddmCloseEWO(id){const e=DDM_EWOS.find(x=>x.id===id);if(!e)return;e.status='closed';closeModal('mA');render();persistEWO(e);}
 function ddmStartEWO(id){const e=DDM_EWOS.find(x=>x.id===id);if(!e)return;e.status='in-progress';closeModal('mA');render();persistEWO(e);}
 
+
+/* ════════════════════════════════════════════
+   DOCUMENT & DRAWING MANAGEMENT REGISTER (DDMR / MDRL)
+   Restricted to the quality role or a user explicitly granted the
+   'ddmr' permission (see Manage Users) — see vDocRegister().
+════════════════════════════════════════════ */
+const DOCREG_REASONS=[
+  ['Issued for Review','IFR'],['Preliminary','PRE'],['Issued for Approval','IFA'],
+  ['Issued for Design','IFD'],['Issued for Enquiry','IFE'],['Issued for Construction','IFC'],
+  ['Issued for Purchase','IFP'],['Issued for Fabrication','IFF'],['For Information Only','INF'],
+  ['Commented Copy','COC'],['As Built','ASB'],
+];
+const DOCREG_APPROVALS=[
+  ['Approved','A'],['Approved with Comments','B'],['Revise & Resubmit','C'],['Cancelled','X'],
+];
+function docregReasonCode(label){const m=DOCREG_REASONS.find(r=>r[0]===label);return m?m[1]:'';}
+function docregApprovalCode(label){const m=DOCREG_APPROVALS.find(a=>a[0]===label);return m?m[1]:'';}
+function docregFullNumber(r){return [r.projectNumber,r.orgCode,r.disciplineCode,r.docType,r.docNumber].filter(Boolean).join('-');}
+function daysBetween(startISO,endISO){
+  if(!startISO||!endISO)return null;
+  const d1=new Date(startISO),d2=new Date(endISO);
+  if(isNaN(d1)||isNaN(d2))return null;
+  return Math.round((d2-d1)/86400000);
+}
+
+const DOCREGST={newForm:false,editingId:null};
+function docregNewId(){return 'DDMR-'+String(DOCREG.length+1).padStart(4,'0');}
+function docregBlank(){
+  return {
+    id:docregNewId(),projectNumber:'',orgCode:'',disciplineCode:'',docType:'',docNumber:'',revision:'',revisionDate:'',
+    title:'',plannedSubmissionDate:'',
+    c2cRef:'',c2cDate:'',c2cReceivedDate:'',
+    cl2cRef:'',cl2cDate:'',cl2cReceivedDate:'',
+    reasonForIssue:'',approvalStatus:'',rollInCount:0,
+    forAction:'',forInfo:'',remarks:'',
+  };
+}
+function docregCanManage(){return ST.role==='quality'||ST.permissions.ddmr===true;}
+
+function vDocRegister(){
+  if(!docregCanManage()){
+    return `<div class="ib"><i class="ti ti-lock"></i> You do not have access to the Document &amp; Drawing Management Register. Ask a Quality Engineer to grant it from Manage Users.</div>`;
+  }
+  return DOCREGST.newForm?docregRenderForm():docregRenderList();
+}
+
+function docregRenderList(){
+  return `
+  <div class="page-hdr" style="margin-bottom:10px">
+    <div><div class="page-title" style="font-size:14px">Document &amp; Drawing Management Register</div><div style="font-size:11px;color:var(--t2);margin-top:2px">DDMR / Master Document Register List (MDRL) — contractor ↔ client transmittal tracking</div></div>
+    <button class="btn btn-a" onclick="DOCREGST.newForm=true;DOCREGST.editingId=null;render()"><i class="ti ti-plus"></i>Add register entry</button>
+  </div>
+  <div class="card" style="overflow-x:auto">
+  <table class="tbl" style="min-width:1500px"><thead><tr>
+    <th style="width:120px">Doc. No.</th><th style="width:60px">Rev</th><th style="min-width:220px">Title</th>
+    <th style="width:95px">Planned Sub.</th>
+    <th style="width:190px">Contractor → Client</th>
+    <th style="width:190px">Client → Contractor</th>
+    <th style="width:60px">Days w/ Client</th>
+    <th style="width:75px">Status</th>
+    <th style="width:60px">Roll-in</th>
+    <th style="width:110px">For Action</th><th style="width:110px">For Info</th>
+    <th style="min-width:150px">Remarks</th><th style="width:80px"></th>
+  </tr></thead><tbody>
+  ${DOCREG.map(r=>{
+    const days=daysBetween(r.c2cReceivedDate,r.cl2cReceivedDate);
+    const rCode=docregReasonCode(r.reasonForIssue),aCode=docregApprovalCode(r.approvalStatus);
+    return `<tr>
+      <td style="font-weight:700;font-size:11px">${docregFullNumber(r)||'—'}</td>
+      <td style="font-size:11px">${r.revision||'—'}</td>
+      <td style="font-size:12px;white-space:normal;line-height:1.3">${r.title||'—'}</td>
+      <td style="font-size:10px;color:var(--t2)">${r.plannedSubmissionDate||'—'}</td>
+      <td style="font-size:10px;color:var(--t2)">${r.c2cRef||'—'}${r.c2cDate?' · '+r.c2cDate:''}${r.c2cReceivedDate?'<br>Recv: '+r.c2cReceivedDate:''}</td>
+      <td style="font-size:10px;color:var(--t2)">${r.cl2cRef||'—'}${r.cl2cDate?' · '+r.cl2cDate:''}${r.cl2cReceivedDate?'<br>Recv: '+r.cl2cReceivedDate:''}</td>
+      <td style="text-align:center;font-size:11px">${days===null?'—':days}</td>
+      <td>${rCode||aCode?`<span class="bdg b-bl" style="font-size:10px">${rCode||'—'}${aCode?'/'+aCode:''}</span>`:'—'}</td>
+      <td style="text-align:center;font-size:11px">${r.rollInCount||0}</td>
+      <td style="font-size:10px;color:var(--t2)">${r.forAction||'—'}</td>
+      <td style="font-size:10px;color:var(--t2)">${r.forInfo||'—'}</td>
+      <td style="font-size:10px;color:var(--t2);white-space:normal">${r.remarks||'—'}</td>
+      <td><div style="display:flex;gap:4px"><button class="btn btn-s" onclick="docregEdit('${r.id}')"><i class="ti ti-edit"></i></button><button class="btn btn-s" style="color:var(--red)" onclick="docregDelete('${r.id}')"><i class="ti ti-trash"></i></button></div></td>
+    </tr>`;
+  }).join('')}
+  ${!DOCREG.length?`<tr><td colspan="13" style="text-align:center;padding:18px;color:var(--t3);font-size:12px">No register entries yet — add the first one above.</td></tr>`:''}
+  </tbody></table>
+  </div>`;
+}
+
+function docregRenderForm(){
+  const f=DOCREGST.editingId?DOCREG.find(r=>r.id===DOCREGST.editingId):docregBlank();
+  if(!f){DOCREGST.newForm=false;return docregRenderList();}
+  const isEdit=!!DOCREGST.editingId;
+  return `
+  <div class="page-hdr" style="margin-bottom:12px">
+    <div><button class="btn btn-s" onclick="DOCREGST.newForm=false;DOCREGST.editingId=null;render()" style="margin-bottom:6px"><i class="ti ti-x"></i>Cancel</button><div class="page-title">${isEdit?'Edit — '+f.id:'New Register Entry'}</div><div style="font-size:11px;color:var(--t2)">Document &amp; Drawing Management Register (DDMR / MDRL)</div></div>
+    <button class="btn btn-g" onclick="docregSubmit()"><i class="ti ti-check"></i>${isEdit?'Save changes':'Add to register'}</button>
+  </div>
+  ${fsec('Document number','ti-hash',
+    ggrid('1fr 1fr 1fr',[
+      frow('Project number',fi('dr-project','e.g. P-001',f.projectNumber)),
+      frow('Organisation code',fi('dr-org','e.g. XXX',f.orgCode)),
+      frow('Department / discipline code',fi('dr-disc','e.g. MEC, CIV, ELE',f.disciplineCode)),
+    ])
+    +ggrid('1fr 1fr 1fr',[
+      frow('Doc. / drawing type',fi('dr-type','e.g. S&D, CA, SLD',f.docType)),
+      frow('Document number',fi('dr-docnum','e.g. 1001',f.docNumber),'*'),
+      frow('Revision',fi('dr-rev','e.g. A, 0',f.revision)),
+    ])
+    +ggrid('1fr 1fr',[
+      frow('Revision date',fi('dr-revdate','',f.revisionDate,'date')),
+      frow('Planned submission date',fi('dr-plansub','',f.plannedSubmissionDate,'date')),
+    ])
+  )}
+  ${fsec('Document / drawing title','ti-file-description',
+    frow('Title',fta('dr-title','Document / drawing description',f.title,2),'*')
+  )}
+  ${fsec('Contractor → Client','ti-arrow-right',
+    ggrid('1fr 1fr 1fr',[
+      frow('Transmittal ref. no.',fi('dr-c2c-ref','',f.c2cRef)),
+      frow('Transmittal date',fi('dr-c2c-date','',f.c2cDate,'date')),
+      frow('Date received (A)',fi('dr-c2c-recv','',f.c2cReceivedDate,'date')),
+    ])
+  )}
+  ${fsec('Client → Contractor','ti-arrow-left',
+    ggrid('1fr 1fr 1fr',[
+      frow('Transmittal ref. no.',fi('dr-cl2c-ref','',f.cl2cRef)),
+      frow('Transmittal date',fi('dr-cl2c-date','',f.cl2cDate,'date')),
+      frow('Date received (B)',fi('dr-cl2c-recv','',f.cl2cReceivedDate,'date')),
+    ])
+  )}
+  ${fsec('Current document status','ti-status-change',
+    ggrid('1fr 1fr 1fr',[
+      frow('Reason for issue',fsel('dr-reason',[['','— Select —']].concat(DOCREG_REASONS.map(r=>[r[0],r[0]+' ('+r[1]+')'])),f.reasonForIssue)),
+      frow('Approval status',fsel('dr-approval',[['','— Select —']].concat(DOCREG_APPROVALS.map(a=>[a[0],a[0]+' ('+a[1]+')'])),f.approvalStatus)),
+      frow('Roll-in count',fi('dr-rollin','0',String(f.rollInCount||0),'number')),
+    ])
+  )}
+  ${fsec('Distribution & remarks','ti-users',
+    ggrid('1fr 1fr',[
+      frow('For action',fi('dr-foraction','Name / party',f.forAction)),
+      frow('For information',fi('dr-forinfo','Name / party',f.forInfo)),
+    ])
+    +frow('Remarks',fta('dr-remarks','',f.remarks,2))
+  )}
+  <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
+    <button class="btn" onclick="DOCREGST.newForm=false;DOCREGST.editingId=null;render()">Cancel</button>
+    <button class="btn btn-g" onclick="docregSubmit()"><i class="ti ti-check"></i>${isEdit?'Save changes':'Add to register'}</button>
+  </div>`;
+}
+
+function docregSubmit(){
+  const g=id=>{const el=document.getElementById(id);return el?el.value.trim():'';};
+  const editId=DOCREGST.editingId;
+  const rec=editId?JSON.parse(JSON.stringify(DOCREG.find(r=>r.id===editId))):docregBlank();
+  rec.projectNumber=g('dr-project');rec.orgCode=g('dr-org');rec.disciplineCode=g('dr-disc');
+  rec.docType=g('dr-type');rec.docNumber=g('dr-docnum');rec.revision=g('dr-rev');rec.revisionDate=g('dr-revdate');
+  rec.title=g('dr-title');rec.plannedSubmissionDate=g('dr-plansub');
+  rec.c2cRef=g('dr-c2c-ref');rec.c2cDate=g('dr-c2c-date');rec.c2cReceivedDate=g('dr-c2c-recv');
+  rec.cl2cRef=g('dr-cl2c-ref');rec.cl2cDate=g('dr-cl2c-date');rec.cl2cReceivedDate=g('dr-cl2c-recv');
+  rec.reasonForIssue=g('dr-reason');rec.approvalStatus=g('dr-approval');rec.rollInCount=Number(g('dr-rollin'))||0;
+  rec.forAction=g('dr-foraction');rec.forInfo=g('dr-forinfo');rec.remarks=g('dr-remarks');
+  if(!rec.docNumber||!rec.title){alert('Document number and title are required.');return;}
+
+  if(editId){
+    const idx=DOCREG.findIndex(r=>r.id===editId);
+    if(idx>=0)DOCREG[idx]=rec;
+    DOCREGST.newForm=false;DOCREGST.editingId=null;render();
+    API.updateDocRegisterEntry(editId,rec).catch(err=>alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'));
+  } else {
+    DOCREG.push(rec);
+    DOCREGST.newForm=false;render();
+    API.createDocRegisterEntry(rec).catch(err=>alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'));
+  }
+}
+function docregEdit(id){DOCREGST.editingId=id;DOCREGST.newForm=true;render();}
+async function docregDelete(id){
+  if(!confirm('Delete this register entry? This cannot be undone.'))return;
+  const idx=DOCREG.findIndex(r=>r.id===id);
+  if(idx<0)return;
+  const removed=DOCREG.splice(idx,1)[0];
+  render();
+  try{ await API.deleteDocRegisterEntry(id); }
+  catch(err){ DOCREG.splice(idx,0,removed); render(); alert('Could not delete on server: '+err.message); }
+}
 
 /* bootstrap */
 /* render() now triggered by ptBoot() after login */

@@ -258,3 +258,31 @@ DROP TRIGGER IF EXISTS trg_ewo_touch ON design_ewos;
 CREATE TRIGGER trg_ewo_touch
   BEFORE UPDATE ON design_ewos
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ---------- PER-USER MODULE GRANTS ----------
+-- Independent of role and access_level: a named, one-off permission a
+-- quality user can hand to any other user for a specific restricted
+-- panel, without changing their role. Only 'ddmr' (Document & Drawing
+-- Management Register) exists today; kept as a JSONB bag so future
+-- one-off module grants don't each need their own migration/column.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- ---------- DOCUMENT & DRAWING MANAGEMENT REGISTER (DDMR / MDRL) ----------
+-- Tracks contractor↔client transmittals for project documents/drawings.
+-- The whole panel — not just editing — is restricted to the quality role
+-- or a user explicitly granted permissions.ddmr = true (see above).
+-- Each record's full row (document number components, transmittal
+-- dates both directions, status) is kept as-is in `data`, the same
+-- JSONB-blob pattern as design_npds/ecos/ewos — a flat register row
+-- with no natural nested sub-structure.
+CREATE TABLE IF NOT EXISTS doc_registers (
+  id          TEXT PRIMARY KEY,
+  data        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_by  INTEGER REFERENCES users(id),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+DROP TRIGGER IF EXISTS trg_ddmr_touch ON doc_registers;
+CREATE TRIGGER trg_ddmr_touch
+  BEFORE UPDATE ON doc_registers
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();

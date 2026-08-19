@@ -18,12 +18,13 @@ function rowToEmployee(r) {
     id: r.id, fullName: r.full_name, active: r.active,
     username: r.username || null, role: r.role || null,
     accessLevel: r.access_level || null,
+    ddmrAccess: !!(r.permissions && r.permissions.ddmr === true),
     hasAccess: !!r.user_id && !!r.user_active,
   };
 }
 
 const SELECT_FULL = `
-  SELECT e.*, u.username, u.role, u.active AS user_active, u.access_level
+  SELECT e.*, u.username, u.role, u.active AS user_active, u.access_level, u.permissions
   FROM employees e
   LEFT JOIN users u ON u.id = e.user_id`;
 
@@ -85,7 +86,7 @@ router.put('/:id', requireAuth, requireRole('quality'), async (req, res) => {
 // POST /api/employees/:id/access   (quality only, quality's own password required)
 // Grants (or updates) a login account for this employee.
 router.post('/:id/access', requireAuth, requireRole('quality'), async (req, res) => {
-  const { username, password, role, accessLevel, confirmPassword } = req.body || {};
+  const { username, password, role, accessLevel, ddmrAccess, confirmPassword } = req.body || {};
   if (!(await checkPassword(req.user.id, confirmPassword))) {
     return res.status(401).json({ error: 'Incorrect password.' });
   }
@@ -99,6 +100,7 @@ router.post('/:id/access', requireAuth, requireRole('quality'), async (req, res)
   if (!['full', 'viewer'].includes(level)) {
     return res.status(400).json({ error: 'Invalid access level.' });
   }
+  const permissions = { ddmr: !!ddmrAccess };
   try {
     const { rows: empRows } = await pool.query('SELECT * FROM employees WHERE id = $1', [req.params.id]);
     const emp = empRows[0];
@@ -107,13 +109,13 @@ router.post('/:id/access', requireAuth, requireRole('quality'), async (req, res)
     const cleanUsername = username.toLowerCase().trim();
     if (emp.user_id) {
       await pool.query(
-        'UPDATE users SET username=$2, role=$3, password_hash=$4, access_level=$5, active=TRUE WHERE id=$1',
-        [emp.user_id, cleanUsername, role, hash, level]
+        'UPDATE users SET username=$2, role=$3, password_hash=$4, access_level=$5, permissions=$6, active=TRUE WHERE id=$1',
+        [emp.user_id, cleanUsername, role, hash, level, JSON.stringify(permissions)]
       );
     } else {
       const { rows: uRows } = await pool.query(
-        'INSERT INTO users (username, full_name, role, password_hash, access_level) VALUES ($1,$2,$3,$4,$5) RETURNING id',
-        [cleanUsername, emp.full_name, role, hash, level]
+        'INSERT INTO users (username, full_name, role, password_hash, access_level, permissions) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
+        [cleanUsername, emp.full_name, role, hash, level, JSON.stringify(permissions)]
       );
       await pool.query('UPDATE employees SET user_id=$2 WHERE id=$1', [req.params.id, uRows[0].id]);
     }

@@ -27,7 +27,7 @@ router.post('/login', async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role, full_name: user.full_name, access_level: user.access_level },
+      { id: user.id, username: user.username, role: user.role, full_name: user.full_name, access_level: user.access_level, permissions: user.permissions || {} },
       process.env.JWT_SECRET,
       { expiresIn: '12h' }
     );
@@ -38,7 +38,7 @@ router.post('/login', async (req, res) => {
       sameSite: 'lax',
       maxAge: 12 * 60 * 60 * 1000,
     });
-    res.json({ user: { id: user.id, username: user.username, role: user.role, full_name: user.full_name, accessLevel: user.access_level } });
+    res.json({ user: { id: user.id, username: user.username, role: user.role, full_name: user.full_name, accessLevel: user.access_level, permissions: user.permissions || {} } });
   } catch (err) {
     console.error('Login error:', err.message);
     res.status(500).json({ error: 'Server error during login.' });
@@ -55,7 +55,7 @@ router.post('/logout', (req, res) => {
 router.get('/me', requireAuth, (req, res) => {
   res.json({ user: {
     id: req.user.id, username: req.user.username, role: req.user.role, full_name: req.user.full_name,
-    accessLevel: req.user.access_level,
+    accessLevel: req.user.access_level, permissions: req.user.permissions || {},
   }});
 });
 
