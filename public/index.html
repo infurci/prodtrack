@@ -4741,9 +4741,73 @@ const DOCREG_REASONS=[
 const DOCREG_APPROVALS=[
   ['Approved','A'],['Approved with Comments','B'],['Revise & Resubmit','C'],['Cancelled','X'],
 ];
+// Document Identification Code systematic per VMI-001-001 "Control of
+// Documented Information" §2.1 — DOC-PRD-DMN-SEQ-TAB_RIT. These three
+// tables mirror that document's own Document Code (§2.1.1), Product Code
+// (§2.1.2) and ATA-based Domain Code (§2.1.3) tables, so a register
+// entry's identification can only be built from values the policy
+// actually recognises rather than free-typed project/org/discipline text.
+const DOCREG_DOC_CODES=[
+  ['V(x)H','Handbook — QMS level 1 document'],
+  ['VMP','Procedure — QMS level 2 document'],
+  ['VMI','Job or work Instruction — QMS level 3 document'],
+  ['VMF','Form Sheet — QMS level 4 document'],
+  ['VML','Listing — QMS level 4 document'],
+  ['QMS','Quality Management information'],
+  ['REQ','Requirements'],
+  ['SPC','Specification'],
+  ['PRT','Technical Parts Definition'],
+  ['BOM','Bill of Materials'],
+  ['AWI','Aircraft Work Instruction'],
+  ['WOT','Work Order register'],
+  ['ENG','Engineering Documentation'],
+  ['CPL','Compliance Documentation'],
+];
+const DOCREG_PRODUCT_CODES=[
+  ['GEN','General Use'],['200','VC200'],['VC2','VC200-2 (2X)'],['V21','VC2-1'],
+  ['OCT','Octocopter development tool'],['DRO','Volocopter Drone'],['VRA','Volocopter Next'],
+];
+const DOCREG_DOMAIN_CODES=[
+  ['000','00-00 General — corporate level, incl. QMS'],['001','00-10 General — DOA level, incl. QMS'],
+  ['002','00-20 General — POA level, incl. QMS'],['003','00-30 General — MOA level, incl. QMS'],
+  ['004','00-40 General — AOC level, incl. QMS'],['009','00-90 General — Ground Ops & ATM/UTM, incl. QMS'],
+  ['010','01-00 Product-level documentation, multiple areas'],['012','01-20 TC process related formal documentation'],
+  ['013','01-30 Project Management documentation'],['042','04-20 Flight Test'],
+  ['043','04-30 Flight Manual & Supplements'],['048','04-80 Aircraft Maintenance Manual & Supplements'],
+  ['060','06 Dimensions and Areas'],['070','07 Lifting / Shoring'],['080','08 Leveling and Weighing'],
+  ['090','09 Towing and Taxiing'],['100','10 Parking, Mooring, storing, Return to service'],
+  ['110','11 Placards & Markings'],['120','12 Servicing, routine maintenance'],['180','18 Vibration and Noise'],
+  ['200','20 Standard Practices — Airframe systems'],['210','21 Environmental Control System'],
+  ['230','23 Communications'],['240','24 Electrical Power'],['242','24-20 Generators'],
+  ['243','24-30 DC Generation — Low Voltage'],['246','24-60 DC Generation — High Voltage'],
+  ['247','24-70 Distribution Network — Low Voltage'],['249','24-90 Distribution Network — High Voltage'],
+  ['250','25 Equipment / Furnishing'],['256','25-60 Rescue System'],['270','27 Flight Control System'],
+  ['271','27-10 Control Stick'],['272','27-20 Flight Control Unit'],['310','31 Indicating / Recording systems'],
+  ['320','32 Landing Gear'],['330','33 Lights'],['340','34 Navigation'],['420','42 Data Communication Network'],
+  ['450','45 CMS'],['510','51 Standard Practices Structure'],['518','51-80 Electrical Bonding'],
+  ['520','52 Doors'],['530','53 Fuselage'],['560','56 Windows'],['580','58 Rotor Ring Section'],
+  ['610','61 Propeller'],['700','70 Standard Practices Engine'],['710','71 Powerplant General'],
+  ['72E','72(E) Electrical Motor'],['770','77 Engine Indicating'],['920','92 Harness'],
+  ['921','92-10 Electrical Harness — Low Voltage'],['923','92-30 Electrical Harness — High Voltage'],
+  ['960','96 Flight Test Equipment'],['970','97 Ground Test Equipment'],['990','99 Instructor Facility'],
+];
 function docregReasonCode(label){const m=DOCREG_REASONS.find(r=>r[0]===label);return m?m[1]:'';}
 function docregApprovalCode(label){const m=DOCREG_APPROVALS.find(a=>a[0]===label);return m?m[1]:'';}
-function docregFullNumber(r){return [r.projectNumber,r.orgCode,r.disciplineCode,r.docType,r.docNumber].filter(Boolean).join('-');}
+// RIT = one-letter (or AA../ZZ.. beyond Z) revision code + 2-digit
+// iteration index, e.g. "C03" — per §2.2 Amendment Identification.
+function docregRIT(r){return r.revisionLetter?r.revisionLetter+(r.iterationIndex||'00'):'';}
+// DOC-PRD-DMN-SEQ-TAB_RIT — PRD and TAB are omitted when not applicable,
+// per §2.1 (PRD is case-dependent/product-specific only; TAB applies
+// only to parts/software/schematics/BOM per §3.1.1).
+function docregFullNumber(r){
+  const parts=[r.docCode,r.productCode,r.domainCode,r.seqCode].filter(Boolean);
+  if(!parts.length)return '';
+  let s=parts.join('-');
+  if(r.tableCode)s+='-'+r.tableCode;
+  const rit=docregRIT(r);
+  if(rit)s+='_'+rit;
+  return s;
+}
 function daysBetween(startISO,endISO){
   if(!startISO||!endISO)return null;
   const d1=new Date(startISO),d2=new Date(endISO);
@@ -4755,7 +4819,9 @@ const DOCREGST={newForm:false,editingId:null};
 function docregNewId(){return 'DDMR-'+String(DOCREG.length+1).padStart(4,'0');}
 function docregBlank(){
   return {
-    id:docregNewId(),projectNumber:'',orgCode:'',disciplineCode:'',docType:'',docNumber:'',revision:'',revisionDate:'',
+    id:docregNewId(),
+    docCode:'',productCode:'',domainCode:'',seqCode:'',tableCode:'',
+    revisionLetter:'',iterationIndex:'',revisionDate:'',
     title:'',plannedSubmissionDate:'',
     c2cRef:'',c2cDate:'',c2cReceivedDate:'',
     cl2cRef:'',cl2cDate:'',cl2cReceivedDate:'',
@@ -4795,7 +4861,7 @@ function docregRenderList(){
     const rCode=docregReasonCode(r.reasonForIssue),aCode=docregApprovalCode(r.approvalStatus);
     return `<tr>
       <td style="font-weight:700;font-size:11px">${docregFullNumber(r)||'—'}</td>
-      <td style="font-size:11px">${r.revision||'—'}</td>
+      <td style="font-size:11px">${docregRIT(r)||'—'}</td>
       <td style="font-size:12px;white-space:normal;line-height:1.3">${r.title||'—'}</td>
       <td style="font-size:10px;color:var(--t2)">${r.plannedSubmissionDate||'—'}</td>
       <td style="font-size:10px;color:var(--t2)">${r.c2cRef||'—'}${r.c2cDate?' · '+r.c2cDate:''}${r.c2cReceivedDate?'<br>Recv: '+r.c2cReceivedDate:''}</td>
@@ -4823,19 +4889,23 @@ function docregRenderForm(){
     <div><button class="btn btn-s" onclick="DOCREGST.newForm=false;DOCREGST.editingId=null;render()" style="margin-bottom:6px"><i class="ti ti-x"></i>Cancel</button><div class="page-title">${isEdit?'Edit — '+f.id:'New Register Entry'}</div><div style="font-size:11px;color:var(--t2)">Document &amp; Drawing Management Register (DDMR / MDRL)</div></div>
     <button class="btn btn-g" onclick="docregSubmit()"><i class="ti ti-check"></i>${isEdit?'Save changes':'Add to register'}</button>
   </div>
-  ${fsec('Document number','ti-hash',
+  ${fsec('Document number — per VMI-001-001 §2.1 (DOC-PRD-DMN-SEQ-TAB_RIT)','ti-hash',
     ggrid('1fr 1fr 1fr',[
-      frow('Project number',fi('dr-project','e.g. P-001',f.projectNumber)),
-      frow('Organisation code',fi('dr-org','e.g. XXX',f.orgCode)),
-      frow('Department / discipline code',fi('dr-disc','e.g. MEC, CIV, ELE',f.disciplineCode)),
-    ])
-    +ggrid('1fr 1fr 1fr',[
-      frow('Doc. / drawing type',fi('dr-type','e.g. S&D, CA, SLD',f.docType)),
-      frow('Document number',fi('dr-docnum','e.g. 1001',f.docNumber),'*'),
-      frow('Revision',fi('dr-rev','e.g. A, 0',f.revision)),
+      frow('Document Code (DOC)',fsel('dr-doc',[['','— Select —']].concat(DOCREG_DOC_CODES.map(d=>[d[0],d[0]+' — '+d[1]])),f.docCode),'*'),
+      frow('Product Code (PRD)',fsel('dr-prd',[['','n/a']].concat(DOCREG_PRODUCT_CODES.map(p=>[p[0],p[0]+' — '+p[1]])),f.productCode)),
+      frow('Domain Code (DMN)',fsel('dr-dmn',[['','— Select —']].concat(DOCREG_DOMAIN_CODES.map(d=>[d[0],d[0]+' — '+d[1]])),f.domainCode),'*'),
     ])
     +ggrid('1fr 1fr',[
+      frow('Sequential Number (SEQ) — 000-999 per domain',fi('dr-seq','e.g. 001',f.seqCode),'*'),
+      frow('Table Code (TAB) — parts / software / schematics / BOM only',fi('dr-tab','e.g. 001, T01',f.tableCode)),
+    ])
+    +'<div style="font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 6px">Amendment identification (§2.2) — RIT</div>'
+    +ggrid('1fr 1fr 1fr',[
+      frow('Revision letter',fi('dr-revletter','e.g. A, B, C',f.revisionLetter),'*'),
+      frow('Iteration index — 2-digit, 00-99',fi('dr-iter','00',f.iterationIndex||'00')),
       frow('Revision date',fi('dr-revdate','',f.revisionDate,'date')),
+    ])
+    +ggrid('1fr',[
       frow('Planned submission date',fi('dr-plansub','',f.plannedSubmissionDate,'date')),
     ])
   )}
@@ -4880,14 +4950,19 @@ function docregSubmit(){
   const g=id=>{const el=document.getElementById(id);return el?el.value.trim():'';};
   const editId=DOCREGST.editingId;
   const rec=editId?JSON.parse(JSON.stringify(DOCREG.find(r=>r.id===editId))):docregBlank();
-  rec.projectNumber=g('dr-project');rec.orgCode=g('dr-org');rec.disciplineCode=g('dr-disc');
-  rec.docType=g('dr-type');rec.docNumber=g('dr-docnum');rec.revision=g('dr-rev');rec.revisionDate=g('dr-revdate');
+  rec.docCode=g('dr-doc');rec.productCode=g('dr-prd');rec.domainCode=g('dr-dmn');
+  rec.seqCode=g('dr-seq');rec.tableCode=g('dr-tab');
+  rec.revisionLetter=g('dr-revletter').toUpperCase().replace(/[^A-Z]/g,'');
+  rec.iterationIndex=(g('dr-iter')||'00').padStart(2,'0').slice(-2);
+  rec.revisionDate=g('dr-revdate');
   rec.title=g('dr-title');rec.plannedSubmissionDate=g('dr-plansub');
   rec.c2cRef=g('dr-c2c-ref');rec.c2cDate=g('dr-c2c-date');rec.c2cReceivedDate=g('dr-c2c-recv');
   rec.cl2cRef=g('dr-cl2c-ref');rec.cl2cDate=g('dr-cl2c-date');rec.cl2cReceivedDate=g('dr-cl2c-recv');
   rec.reasonForIssue=g('dr-reason');rec.approvalStatus=g('dr-approval');rec.rollInCount=Number(g('dr-rollin'))||0;
   rec.forAction=g('dr-foraction');rec.forInfo=g('dr-forinfo');rec.remarks=g('dr-remarks');
-  if(!rec.docNumber||!rec.title){alert('Document number and title are required.');return;}
+  if(!rec.docCode||!rec.domainCode||!rec.seqCode){alert('Document Code, Domain Code and Sequential Number are required to build the identification code.');return;}
+  if(!rec.revisionLetter){alert('A revision letter is required (VMI-001-001 §2.2 Amendment Identification).');return;}
+  if(!rec.title){alert('Document / drawing title is required.');return;}
 
   if(editId){
     const idx=DOCREG.findIndex(r=>r.id===editId);
