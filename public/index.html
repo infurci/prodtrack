@@ -403,6 +403,18 @@ const API = {
   createDocRegisterEntry(e){ return this.req('POST','/api/doc-register',e); },
   updateDocRegisterEntry(id,e){ return this.req('PUT','/api/doc-register/'+encodeURIComponent(id),e); },
   deleteDocRegisterEntry(id){ return this.req('DELETE','/api/doc-register/'+encodeURIComponent(id)); },
+  // Lightweight search — any logged-in user, not just ddmr-granted ones,
+  // so New Part Design / EWO / ECO forms can reference a document number
+  // without exposing the full register.
+  docRegisterLookup(q){ return this.req('GET','/api/doc-register/lookup?q='+encodeURIComponent(q||'')); },
+  async uploadDocRegisterAttachment(id,file){
+    const fd=new FormData(); fd.append('file',file);
+    const r=await fetch('/api/doc-register/'+encodeURIComponent(id)+'/attachment',{method:'POST',body:fd,credentials:'same-origin'});
+    let data=null; try{ data=await r.json(); }catch(e){}
+    if(!r.ok){ throw new Error((data&&data.error)||('Upload failed ('+r.status+')')); }
+    return data;
+  },
+  removeDocRegisterAttachment(id){ return this.req('DELETE','/api/doc-register/'+encodeURIComponent(id)+'/attachment'); },
 };
 
 // Employee roster — powers name-autocomplete everywhere via a shared <datalist>.
@@ -4546,26 +4558,26 @@ function ddmRenderNPDForm(){
     <div class="fg"><label class="fl">DevQA</label>${inp('devqa',f.devqa,'DevQA name')}</div>
     <div class="fg"><label class="fl">Initiator</label>${inp('initiator',f.initiator,'')}</div>
   </div></div>
-  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-sitemap"></i>4 — Architecture phase (pre-fill if known)</div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-    <div class="fg"><label class="fl">SDD chapter ref</label>${inp('architecturePhase.sddChapter',f.architecturePhase.sddChapter,'Aircraft SDD §X.X')}</div>
-    <div class="fg"><label class="fl">Interface Control Document</label>${inp('architecturePhase.interfaceDoc',f.architecturePhase.interfaceDoc,'ICD-XXX-XXX')}</div>
-    <div class="fg"><label class="fl">Review checklist template</label>${inp('architecturePhase.reviewChecklist',f.architecturePhase.reviewChecklist,'CHK-V21-ARCH-XXX')}</div>
+  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-sitemap"></i>4 — Architecture phase (pre-fill if known)</div><div style="font-size:10px;color:var(--t2)">Document numbers are picked from the Document Register — no manual entry</div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+    ${docNumField('architecturePhase.sddChapter','SDD chapter ref',f.architecturePhase.sddChapter,f.architecturePhase.sddChapterDocId)}
+    ${docNumField('architecturePhase.interfaceDoc','Interface Control Document',f.architecturePhase.interfaceDoc,f.architecturePhase.interfaceDocDocId)}
+    ${docNumField('architecturePhase.reviewChecklist','Review checklist template',f.architecturePhase.reviewChecklist,f.architecturePhase.reviewChecklistDocId)}
   </div></div>
-  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-vector"></i>5 — Preliminary design (pre-fill if known)</div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-    <div class="fg"><label class="fl">ICD reference</label>${inp('prelimDesignPhase.icdRef',f.prelimDesignPhase.icdRef,'')}</div>
-    <div class="fg"><label class="fl">Mold surfaces / 3D OML ref</label>${inp('prelimDesignPhase.moldSurfaces3D',f.prelimDesignPhase.moldSurfaces3D,'')}</div>
-    <div class="fg"><label class="fl">Load specification document</label>${inp('prelimDesignPhase.loadSpecDoc',f.prelimDesignPhase.loadSpecDoc,'')}</div>
+  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-vector"></i>5 — Preliminary design (pre-fill if known)</div><div style="font-size:10px;color:var(--t2)">Document numbers are picked from the Document Register — no manual entry</div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+    ${docNumField('prelimDesignPhase.icdRef','ICD reference',f.prelimDesignPhase.icdRef,f.prelimDesignPhase.icdRefDocId)}
+    ${docNumField('prelimDesignPhase.moldSurfaces3D','Mold surfaces / 3D OML ref',f.prelimDesignPhase.moldSurfaces3D,f.prelimDesignPhase.moldSurfaces3DDocId)}
+    ${docNumField('prelimDesignPhase.loadSpecDoc','Load specification document',f.prelimDesignPhase.loadSpecDoc,f.prelimDesignPhase.loadSpecDocDocId)}
   </div></div>
-  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-ruler-2"></i>6 — Detailed design (pre-fill if known)</div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-    <div class="fg"><label class="fl">Engineering drawing ref</label>${inp('detailedDesignPhase.engineeringDwgRef',f.detailedDesignPhase.engineeringDwgRef,'DWG-XXX-A')}</div>
-    <div class="fg"><label class="fl">Production drawing ref</label>${inp('detailedDesignPhase.productionDwgRef',f.detailedDesignPhase.productionDwgRef,'DWG-XXX-P-A')}</div>
-    <div class="fg"><label class="fl">Assembly drawing ref</label>${inp('detailedDesignPhase.assemblyDwgRef',f.detailedDesignPhase.assemblyDwgRef,'DWG-XXX-ASM-A')}</div>
-    <div class="fg"><label class="fl">3D model reference (PLM)</label>${inp('detailedDesignPhase.threeDModelRef',f.detailedDesignPhase.threeDModelRef,'CAD-XXX-DET-RevA')}</div>
-    <div class="fg"><label class="fl">Stress analysis report</label>${inp('detailedDesignPhase.stressAnalysisRef',f.detailedDesignPhase.stressAnalysisRef,'RPT-STR-XXX')}</div>
-    <div class="fg"><label class="fl">Frequency analysis report</label>${inp('detailedDesignPhase.freqAnalysisRef',f.detailedDesignPhase.freqAnalysisRef,'')}</div>
-    <div class="fg"><label class="fl">Aerodynamics analysis report</label>${inp('detailedDesignPhase.aeroAnalysisRef',f.detailedDesignPhase.aeroAnalysisRef,'')}</div>
-    <div class="fg"><label class="fl">Design description document</label>${inp('detailedDesignPhase.designDescRef',f.detailedDesignPhase.designDescRef,'DD-XXX')}</div>
-    <div class="fg"><label class="fl">CDR review checklist</label>${inp('detailedDesignPhase.reviewChecklist',f.detailedDesignPhase.reviewChecklist,'CHK-V21-CDR-XXX')}</div>
+  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-ruler-2"></i>6 — Detailed design (pre-fill if known)</div><div style="font-size:10px;color:var(--t2)">Document numbers are picked from the Document Register — no manual entry</div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+    ${docNumField('detailedDesignPhase.engineeringDwgRef','Engineering drawing ref',f.detailedDesignPhase.engineeringDwgRef,f.detailedDesignPhase.engineeringDwgRefDocId)}
+    ${docNumField('detailedDesignPhase.productionDwgRef','Production drawing ref',f.detailedDesignPhase.productionDwgRef,f.detailedDesignPhase.productionDwgRefDocId)}
+    ${docNumField('detailedDesignPhase.assemblyDwgRef','Assembly drawing ref',f.detailedDesignPhase.assemblyDwgRef,f.detailedDesignPhase.assemblyDwgRefDocId)}
+    ${docNumField('detailedDesignPhase.threeDModelRef','3D model reference (PLM)',f.detailedDesignPhase.threeDModelRef,f.detailedDesignPhase.threeDModelRefDocId)}
+    ${docNumField('detailedDesignPhase.stressAnalysisRef','Stress analysis report',f.detailedDesignPhase.stressAnalysisRef,f.detailedDesignPhase.stressAnalysisRefDocId)}
+    ${docNumField('detailedDesignPhase.freqAnalysisRef','Frequency analysis report',f.detailedDesignPhase.freqAnalysisRef,f.detailedDesignPhase.freqAnalysisRefDocId)}
+    ${docNumField('detailedDesignPhase.aeroAnalysisRef','Aerodynamics analysis report',f.detailedDesignPhase.aeroAnalysisRef,f.detailedDesignPhase.aeroAnalysisRefDocId)}
+    ${docNumField('detailedDesignPhase.designDescRef','Design description document',f.detailedDesignPhase.designDescRef,f.detailedDesignPhase.designDescRefDocId)}
+    ${docNumField('detailedDesignPhase.reviewChecklist','CDR review checklist',f.detailedDesignPhase.reviewChecklist,f.detailedDesignPhase.reviewChecklistDocId)}
   </div></div>
   <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
     <button class="btn" onclick="DDMST.newPartForm=false;DDM_FORM_NPD=null;DDMST.editingNPDId=null;render()">Cancel</button>
@@ -4580,7 +4592,7 @@ function ddmRenderECODetail(id){
   return `<div class="page-hdr" style="margin-bottom:10px"><div><button class="btn btn-s" onclick="DDMST.activeECO=null;render()" style="margin-bottom:6px"><i class="ti ti-arrow-left"></i>Back</button><div class="page-title">${e.id} — ${e.title}</div><div style="font-size:11px;color:var(--t2);margin-top:2px">${e.system} · ${e.discipline} · ${e.changeClass.split(' — ')[0]} · ${e.initiatedDate} · ${e.initiator}</div></div><div style="display:flex;gap:6px;align-items:center"><span class="bdg ${e.changeClass.startsWith('Class I')?'b-rd':e.changeClass.startsWith('Class II')?'b-am':'b-gy'}" style="padding:5px 11px">${e.changeClass.split(' — ')[0]}</span><span class="bdg ${e.status==='ccb-approved'||e.status==='closed'?'b-gn':e.status==='in-review'?'b-am':'b-bl'}" style="padding:5px 11px">${e.status}</span></div></div>
   <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-file-description"></i>Change description</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div><div style="font-size:10px;color:var(--t2);margin-bottom:4px">REASON FOR CHANGE</div><div style="font-size:12px;line-height:1.5">${e.reasonForChange}</div><div style="margin-top:6px;font-size:10px;color:var(--t2)">Problem Report ref: <strong style="color:var(--blu)">${e.problemRef||'—'}</strong></div></div><div><div style="font-size:10px;color:var(--t2);margin-bottom:4px">PRE-CHANGE CONFIG</div><div style="font-size:12px;background:var(--s2);padding:6px 8px;border-radius:6px;line-height:1.5">${e.preChangeConfig}</div><div style="font-size:10px;color:var(--t2);margin-top:8px;margin-bottom:4px">POST-CHANGE CONFIG</div><div style="font-size:12px;background:#F0FFF4;padding:6px 8px;border-radius:6px;line-height:1.5;border:1px solid #C6F6D5">${e.postChangeConfig}</div></div></div></div>
   <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-radar"></i>Impact assessment</div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">${[['Weight',e.impactWeight],['Cost',e.impactCost],['Schedule',e.impactSchedule],['Airworthiness / Certification',e.impactAirworthiness],['Interface',e.impactInterface],['Other systems',e.impactOtherSystems]].map(([l,v])=>`<div style="background:var(--s2);border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:var(--t2)">${l}</div><div style="font-size:11px;margin-top:2px;line-height:1.4">${v||'—'}</div></div>`).join('')}</div><div style="margin-top:10px;background:var(--s2);border-radius:6px;padding:10px"><div style="font-size:10px;color:var(--t2);margin-bottom:4px">CLASSIFICATION JUSTIFICATION</div><div style="font-size:12px;line-height:1.5">${e.classificationJustification}</div></div></div>
-  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-files"></i>Affected documents &amp; part numbers</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div><div style="font-size:10px;color:var(--t2);margin-bottom:6px">DOCUMENTS</div>${(e.affectedDocuments||[]).map(d=>`<div style="font-size:12px;padding:3px 0"><i class="ti ti-file" style="font-size:11px;color:var(--t2)"></i> ${d}</div>`).join('')||'—'}</div><div><div style="font-size:10px;color:var(--t2);margin-bottom:6px">PART NUMBERS</div>${(e.affectedPNs||[]).map(p=>`<div style="font-size:12px;padding:3px 0"><i class="ti ti-tag" style="font-size:11px;color:var(--t2)"></i> ${p}</div>`).join('')||'—'}</div></div></div>
+  <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-files"></i>Affected documents &amp; part numbers</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div><div style="font-size:10px;color:var(--t2);margin-bottom:6px">DOCUMENTS</div>${ecoDocsListHtml(e.affectedDocuments,idx=>`ecoDetailRemoveDoc('${e.id}',${idx})`)}<button type="button" class="btn btn-s" style="margin-top:2px" onclick="_ecoDetailEditId='${e.id}';docNumPickerOpenList('ecoDetailAddDoc')"><i class="ti ti-search"></i>Add document</button></div><div><div style="font-size:10px;color:var(--t2);margin-bottom:6px">PART NUMBERS</div>${(e.affectedPNs||[]).map(p=>`<div style="font-size:12px;padding:3px 0"><i class="ti ti-tag" style="font-size:11px;color:var(--t2)"></i> ${p}</div>`).join('')||'—'}</div></div></div>
   <div class="card" style="border:2px solid ${signed>=total?'var(--grn)':'var(--bd)'}"><div class="card-hdr"><div class="card-title"><i class="ti ti-writing"></i>Approval chain — ${signed}/${total} signed</div><div style="background:var(--s3);border-radius:6px;height:8px;width:180px;overflow:hidden"><div style="background:${signed>=total?'var(--grn)':'var(--acc)'};width:${Math.round(signed/total*100)}%;height:100%"></div></div></div>
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">${approvalKeys.map((k,idx)=>{const a=e.approvals[k];const prevSigned=idx===0||approvalKeys.slice(0,idx).every(pk=>e.approvals[pk].signed);const canSign=prevSigned&&!a.signed&&canApprove();return `<div style="border:1px solid ${a.signed?'var(--grn)':'var(--bd)'};border-radius:8px;padding:10px;background:${a.signed?'#F0FFF4':'#fff'}"><div style="font-size:9px;font-weight:700;color:var(--t2);text-transform:uppercase;margin-bottom:4px">${a.role}</div>${a.signed?`<div style="color:var(--grn);font-size:13px;font-weight:700">✓ ${a.name}</div><div style="font-size:10px;color:var(--t2)">${a.date}</div>`:`<div style="color:var(--t3);font-size:12px">Awaiting</div>${canSign?`<button class="btn btn-s btn-g" style="margin-top:6px;width:100%;font-size:10px" onclick="ddmSignECO('${e.id}','${k}')"><i class="ti ti-pencil"></i>Sign off</button>`:`<div style="font-size:10px;color:var(--t3);margin-top:4px">${prevSigned?'Awaiting your action':'Prior signatures needed'}</div>`}`}</div>`;}).join('')}</div></div>
   <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-tool"></i>Implementation tracking</div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px"><div><div style="font-size:10px;color:var(--t2)">ECN Reference</div><div style="font-size:13px;font-weight:700;color:var(--blu)">${e.implementation.ecnRef||'—'}</div></div><div><div style="font-size:10px;color:var(--t2)">ECN Status</div><div style="font-size:12px;font-weight:600">${e.implementation.ecnStatus}</div></div><div><div style="font-size:10px;color:var(--t2)">Implemented by</div><div style="font-size:12px">${e.implementation.implementedBy||'—'}</div></div></div>
@@ -4621,7 +4633,10 @@ function ddmRenderECOForm(){
     <div class="fg"><label class="fl">Other systems impact</label>${inp('impactOtherSystems',f.impactOtherSystems,'List affected systems')}</div>
   </div><div class="fg" style="margin-top:8px"><label class="fl">Change class justification *</label>${ta('classificationJustification',f.classificationJustification,'Justify Class I/II/III per VMP-001-002 §4.1',3)}</div></div>
   <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-files"></i>4 — Affected documents &amp; parts</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-    <div class="fg"><label class="fl">Affected documents (comma-separated)</label>${inp('_affectedDocsStr',(f.affectedDocuments||[]).join(', '),'DWG-100-001, MBoM-MSN001...')}</div>
+    <div class="fg"><label class="fl">Affected documents</label><div style="font-size:10px;color:var(--t2);margin-bottom:4px">Picked from the Document Register — no manual entry</div>
+      <div id="eco-form-docs-list">${ecoFormDocsListHtml()}</div>
+      <button type="button" class="btn btn-s" style="margin-top:2px" onclick="docNumPickerOpenList('ecoFormAddDoc')"><i class="ti ti-search"></i>Add document</button>
+    </div>
     <div class="fg"><label class="fl">Affected part numbers (comma-separated)</label>${inp('_affectedPNsStr',(f.affectedPNs||[]).join(', '),'PRT-V21-100-001 Rev B...')}</div>
   </div></div>
   <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-users"></i>5 — Responsible parties</div></div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
@@ -4645,11 +4660,19 @@ async function persistNPD(n){ try{ await API.updateNPD(n.id,n); }catch(err){ ale
 async function persistECO(e){ try{ await API.updateECO(e.id,e); }catch(err){ alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'); } }
 async function persistEWO(e){ try{ await API.updateEWO(e.id,e); }catch(err){ alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'); } }
 
+const NPD_DOCNUM_PATHS=[
+  'architecturePhase.sddChapter','architecturePhase.interfaceDoc','architecturePhase.reviewChecklist',
+  'prelimDesignPhase.icdRef','prelimDesignPhase.moldSurfaces3D','prelimDesignPhase.loadSpecDoc',
+  'detailedDesignPhase.engineeringDwgRef','detailedDesignPhase.productionDwgRef','detailedDesignPhase.assemblyDwgRef',
+  'detailedDesignPhase.threeDModelRef','detailedDesignPhase.stressAnalysisRef','detailedDesignPhase.freqAnalysisRef',
+  'detailedDesignPhase.aeroAnalysisRef','detailedDesignPhase.designDescRef','detailedDesignPhase.reviewChecklist',
+];
 function ddmSubmitNPD(){
   const f=DDM_FORM_NPD;
   if(!f.pn||!f.title){alert('Part Number and Title are required.');return;}
   if(!f.dal){alert('Design Assurance Level is required.');return;}
   if(!f.de1){alert('DE1 is required.');return;}
+  docNumSyncToForm(f,NPD_DOCNUM_PATHS);
   const editId=DDMST.editingNPDId;
   if(!editId)f.status='in-progress';
   const rec=JSON.parse(JSON.stringify(f));
@@ -4675,10 +4698,10 @@ function ddmSubmitECO(){
   if(!f.reasonForChange){alert('Reason for change is required.');return;}
   if(!f.impactAirworthiness){alert('Airworthiness impact is required.');return;}
   if(!f.classificationJustification){alert('Classification justification is required.');return;}
-  const docsEl=document.querySelector('[oninput*="_affectedDocsStr"]');
   const pnsEl=document.querySelector('[oninput*="_affectedPNsStr"]');
-  if(docsEl)f.affectedDocuments=docsEl.value.split(',').map(s=>s.trim()).filter(Boolean);
   if(pnsEl)f.affectedPNs=pnsEl.value.split(',').map(s=>s.trim()).filter(Boolean);
+  // f.affectedDocuments is already kept live by ecoFormAddDoc/ecoFormRemoveDoc —
+  // no read-back needed (it's a picker-driven list, not a text field).
   f.status='in-review';
   const rec=JSON.parse(JSON.stringify(f));
   DDM_ECOS.push(rec);
@@ -4719,9 +4742,19 @@ function ddmNewEWO(){
 function ddmEWODetail(id){
   const e=DDM_EWOS.find(x=>x.id===id);if(!e)return;
   const h=`<div class="modal-title">${e.id}</div><div class="modal-sub">${e.title}</div>`;
-  const b=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><div class="fg"><label class="fl">NPD Link</label><div class="fi" style="background:var(--s2);pointer-events:none;color:var(--blu);font-weight:700">${e.npdId||'—'}</div></div><div class="fg"><label class="fl">Discipline</label><div class="fi" style="background:var(--s2);pointer-events:none">${e.discipline||'—'}</div></div><div class="fg"><label class="fl">Assigned</label><div class="fi" style="background:var(--s2);pointer-events:none">${e.assignedTo}</div></div><div class="fg"><label class="fl">Priority</label><div class="fi" style="background:var(--s2);pointer-events:none">${e.priority}</div></div><div class="fg"><label class="fl">Due</label><div class="fi" style="background:var(--s2);pointer-events:none">${e.due||'—'}</div></div><div class="fg"><label class="fl">Hours</label><div class="fi" style="background:var(--s2);pointer-events:none">${e.hoursLogged}h / ${e.hours}h</div></div></div><div class="fg" style="margin-top:8px"><label class="fl">Deliverable</label><div class="fi" style="background:var(--s2);pointer-events:none;white-space:normal;height:auto;line-height:1.5">${e.deliverable||'—'}</div></div><div class="fg" style="margin-top:6px"><label class="fl">Notes</label><div class="fi" style="background:var(--s2);pointer-events:none;white-space:normal;height:auto;line-height:1.5">${e.notes||'—'}</div></div>${e.status!=='closed'&&canApprove()?`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn btn-s btn-g" onclick="ddmCloseEWO('${e.id}')"><i class="ti ti-check"></i>Mark complete</button><button class="btn btn-s" onclick="ddmStartEWO('${e.id}')"><i class="ti ti-player-play"></i>Mark in-progress</button></div>`:''}`;
+  const b=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><div class="fg"><label class="fl">NPD Link</label><div class="fi" style="background:var(--s2);pointer-events:none;color:var(--blu);font-weight:700">${e.npdId||'—'}</div></div><div class="fg"><label class="fl">Discipline</label><div class="fi" style="background:var(--s2);pointer-events:none">${e.discipline||'—'}</div></div><div class="fg"><label class="fl">Assigned</label><div class="fi" style="background:var(--s2);pointer-events:none">${e.assignedTo}</div></div><div class="fg"><label class="fl">Priority</label><div class="fi" style="background:var(--s2);pointer-events:none">${e.priority}</div></div><div class="fg"><label class="fl">Due</label><div class="fi" style="background:var(--s2);pointer-events:none">${e.due||'—'}</div></div><div class="fg"><label class="fl">Hours</label><div class="fi" style="background:var(--s2);pointer-events:none">${e.hoursLogged}h / ${e.hours}h</div></div></div>
+  <div style="margin-top:8px">${docNumField('deliverable','Deliverable',e.deliverable,e.deliverableDocId)}</div>
+  <div class="fg" style="margin-top:6px"><label class="fl">Notes</label><div class="fi" style="background:var(--s2);pointer-events:none;white-space:normal;height:auto;line-height:1.5">${e.notes||'—'}</div></div>
+  <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-s btn-a" onclick="ddmSaveEWODeliverable('${e.id}')"><i class="ti ti-device-floppy"></i>Save deliverable</button>${e.status!=='closed'&&canApprove()?`<button class="btn btn-s btn-g" onclick="ddmCloseEWO('${e.id}')"><i class="ti ti-check"></i>Mark complete</button><button class="btn btn-s" onclick="ddmStartEWO('${e.id}')"><i class="ti ti-player-play"></i>Mark in-progress</button>`:''}</div>`;
   const f=`<button class="btn" onclick="closeModal('mA')">Close</button>`;
   document.getElementById('mA-hdr').innerHTML=h;document.getElementById('mA-body').innerHTML=b;document.getElementById('mA-foot').innerHTML=f;document.getElementById('mA').classList.add('open');
+}
+function ddmSaveEWODeliverable(id){
+  const e=DDM_EWOS.find(x=>x.id===id);if(!e)return;
+  const {value,docId}=docNumFieldValue('deliverable');
+  e.deliverable=value;e.deliverableDocId=docId;
+  render();persistEWO(e);
+  ddmEWODetail(id);
 }
 function ddmCloseEWO(id){const e=DDM_EWOS.find(x=>x.id===id);if(!e)return;e.status='closed';closeModal('mA');render();persistEWO(e);}
 function ddmStartEWO(id){const e=DDM_EWOS.find(x=>x.id===id);if(!e)return;e.status='in-progress';closeModal('mA');render();persistEWO(e);}
@@ -4842,7 +4875,7 @@ function docregRenderList(){
   return `
   <div class="page-hdr" style="margin-bottom:10px">
     <div><div class="page-title" style="font-size:14px">Document &amp; Drawing Management Register</div><div style="font-size:11px;color:var(--t2);margin-top:2px">DDMR / Master Document Register List (MDRL) — contractor ↔ client transmittal tracking</div></div>
-    <button class="btn btn-a" onclick="DOCREGST.newForm=true;DOCREGST.editingId=null;render()"><i class="ti ti-plus"></i>Add register entry</button>
+    <button class="btn btn-a" onclick="DOCREGST.newForm=true;DOCREGST.editingId=null;DOCREG_PENDING_FILE=null;render()"><i class="ti ti-plus"></i>Add register entry</button>
   </div>
   <div class="card" style="overflow-x:auto">
   <table class="tbl" style="min-width:1500px"><thead><tr>
@@ -4860,7 +4893,7 @@ function docregRenderList(){
     const days=daysBetween(r.c2cReceivedDate,r.cl2cReceivedDate);
     const rCode=docregReasonCode(r.reasonForIssue),aCode=docregApprovalCode(r.approvalStatus);
     return `<tr>
-      <td style="font-weight:700;font-size:11px">${docregFullNumber(r)||'—'}</td>
+      <td style="font-weight:700;font-size:11px">${docregFullNumber(r)||'—'}${r.attachmentName?` <i class="ti ti-file-type-pdf" style="color:var(--red)" title="PDF attached: ${r.attachmentName}"></i>`:''}</td>
       <td style="font-size:11px">${docregRIT(r)||'—'}</td>
       <td style="font-size:12px;white-space:normal;line-height:1.3">${r.title||'—'}</td>
       <td style="font-size:10px;color:var(--t2)">${r.plannedSubmissionDate||'—'}</td>
@@ -4940,10 +4973,69 @@ function docregRenderForm(){
     ])
     +frow('Remarks',fta('dr-remarks','',f.remarks,2))
   )}
+  ${fsec('PDF attachment','ti-file-type-pdf','<div id="docreg-attach-wrap">'+docregAttachmentBlock(f)+'</div>')}
   <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
     <button class="btn" onclick="DOCREGST.newForm=false;DOCREGST.editingId=null;render()">Cancel</button>
     <button class="btn btn-g" onclick="docregSubmit()"><i class="ti ti-check"></i>${isEdit?'Save changes':'Add to register'}</button>
   </div>`;
+}
+
+// PDF attachment — the controlled copy of the register entry's document
+// itself. Mirrors dpAttachmentBlock()'s stage-then-upload-on-save pattern.
+let DOCREG_PENDING_FILE=null;
+// Unlike the rest of this form (plain id-based inputs, read from the DOM
+// only at submit time — nothing keeps them synced to any JS state in
+// between), choosing/clearing/removing a PDF needs to update what's on
+// screen immediately. Re-rendering the *whole* form via render() would
+// throw away anything the user had already typed into the other fields
+// (they're not bound to a live state object), so refresh only the
+// attachment block's own wrapper div instead.
+function docregRefreshAttachmentBlock(){
+  const el=document.getElementById('docreg-attach-wrap');
+  if(!el)return;
+  const f=DOCREGST.editingId?DOCREG.find(r=>r.id===DOCREGST.editingId):docregBlank();
+  if(!f)return;
+  el.innerHTML=docregAttachmentBlock(f);
+}
+function docregFileChosen(inputEl){
+  const file=inputEl.files&&inputEl.files[0];
+  if(!file)return;
+  if(file.type!=='application/pdf'){alert('Only PDF files can be attached.');inputEl.value='';return;}
+  DOCREG_PENDING_FILE=file;
+  docregRefreshAttachmentBlock();
+}
+function docregClearPendingFile(){DOCREG_PENDING_FILE=null;docregRefreshAttachmentBlock();}
+function docregAttachmentBlock(f){
+  if(DOCREG_PENDING_FILE){
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--acc);border-radius:8px;background:var(--s2)">
+      <i class="ti ti-file-type-pdf" style="font-size:22px;color:var(--acc)"></i>
+      <div style="flex:1"><div style="font-size:12px;font-weight:600">${DOCREG_PENDING_FILE.name}</div><div style="font-size:10px;color:var(--t2)">${dpFmtBytes(DOCREG_PENDING_FILE.size)} · will be uploaded on save</div></div>
+      <button type="button" class="btn btn-s" onclick="docregClearPendingFile()"><i class="ti ti-x"></i>Remove</button>
+    </div>`;
+  }
+  if(f.attachmentName){
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--bd);border-radius:8px">
+      <i class="ti ti-file-type-pdf" style="font-size:22px;color:var(--red)"></i>
+      <div style="flex:1"><div style="font-size:12px;font-weight:600">${f.attachmentName}</div><div style="font-size:10px;color:var(--t2)">${dpFmtBytes(f.attachmentSize)}${f.attachmentUploadedAt?' · uploaded '+String(f.attachmentUploadedAt).split('T')[0]:''}</div></div>
+      <button type="button" class="btn btn-s" onclick="openDocRegisterPdfViewer('${f.id}')"><i class="ti ti-eye"></i>View</button>
+      <label class="btn btn-s" style="cursor:pointer">Replace<input type="file" accept="application/pdf,.pdf" style="display:none" onchange="docregFileChosen(this)"></label>
+      <button type="button" class="btn btn-s" style="color:var(--red)" onclick="docregRemoveAttachment('${f.id}')"><i class="ti ti-trash"></i>Remove</button>
+    </div>`;
+  }
+  return `<div class="fg">
+    <label class="fl">Attach the controlled PDF for this document</label>
+    <input class="fi" type="file" accept="application/pdf,.pdf" onchange="docregFileChosen(this)">
+    <div style="font-size:10px;color:var(--t2);margin-top:4px">PDF only, max 25 MB — this is what opens when this document is referenced elsewhere (New Part Design, EWO, ECO).</div>
+  </div>`;
+}
+async function docregRemoveAttachment(id){
+  if(!window.confirm('Remove the attached PDF from this register entry?'))return;
+  try{
+    await API.removeDocRegisterAttachment(id);
+    const patch={attachmentName:null,attachmentMime:null,attachmentSize:null,attachmentUploadedAt:null};
+    const d=DOCREG.find(x=>x.id===id);if(d)Object.assign(d,patch);
+    if(DOCREGST.newForm)docregRefreshAttachmentBlock();else render();
+  }catch(err){alert('Could not remove attachment: '+err.message);}
 }
 
 function docregSubmit(){
@@ -4964,18 +5056,41 @@ function docregSubmit(){
   if(!rec.revisionLetter){alert('A revision letter is required (VMI-001-001 §2.2 Amendment Identification).');return;}
   if(!rec.title){alert('Document / drawing title is required.');return;}
 
+  const pendingFile=DOCREG_PENDING_FILE;
+  DOCREG_PENDING_FILE=null;
+
   if(editId){
     const idx=DOCREG.findIndex(r=>r.id===editId);
     if(idx>=0)DOCREG[idx]=rec;
     DOCREGST.newForm=false;DOCREGST.editingId=null;render();
-    API.updateDocRegisterEntry(editId,rec).catch(err=>alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'));
+    (async()=>{
+      let saved;
+      try{ saved=await API.updateDocRegisterEntry(editId,rec); }
+      catch(err){ alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'); return; }
+      if(pendingFile){
+        try{ saved=await API.uploadDocRegisterAttachment(editId,pendingFile); }
+        catch(err){ alert('Entry saved, but the PDF attachment failed to upload: '+err.message); }
+      }
+      const i=DOCREG.findIndex(r=>r.id===editId);if(i>=0)DOCREG[i]=saved;
+      render();
+    })();
   } else {
     DOCREG.push(rec);
     DOCREGST.newForm=false;render();
-    API.createDocRegisterEntry(rec).catch(err=>alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'));
+    (async()=>{
+      let saved;
+      try{ saved=await API.createDocRegisterEntry(rec); }
+      catch(err){ alert('Could not save to server: '+err.message+'\nYour change is visible locally but NOT yet saved.'); return; }
+      if(pendingFile){
+        try{ saved=await API.uploadDocRegisterAttachment(rec.id,pendingFile); }
+        catch(err){ alert('Entry saved, but the PDF attachment failed to upload: '+err.message); }
+      }
+      const i=DOCREG.findIndex(r=>r.id===rec.id);if(i>=0)DOCREG[i]=saved;
+      render();
+    })();
   }
 }
-function docregEdit(id){DOCREGST.editingId=id;DOCREGST.newForm=true;render();}
+function docregEdit(id){DOCREGST.editingId=id;DOCREGST.newForm=true;DOCREG_PENDING_FILE=null;render();}
 async function docregDelete(id){
   if(!confirm('Delete this register entry? This cannot be undone.'))return;
   const idx=DOCREG.findIndex(r=>r.id===id);
@@ -4984,6 +5099,200 @@ async function docregDelete(id){
   render();
   try{ await API.deleteDocRegisterEntry(id); }
   catch(err){ DOCREG.splice(idx,0,removed); render(); alert('Could not delete on server: '+err.message); }
+}
+
+/* ════════════════════════════════════════════
+   DOCUMENT NUMBER PICKER — reusable across New Part Design / EWO / ECO
+   forms wherever a document number is requested. Renders a read-only
+   field (no manual entry) with a Search button that opens a floating
+   search of the Document Register, plus an "open PDF" button once a
+   document is picked. Search and PDF viewing work for any logged-in
+   user — only managing the register itself requires the ddmr grant.
+════════════════════════════════════════════ */
+function docNumFieldId(path){return 'dnf__'+path.replace(/\./g,'_');}
+// label/value/docId/required -> a frow-wrapped picker field. `path` just
+// needs to be unique within whichever form is currently rendered (only
+// one full-page form is ever open at a time in this app).
+function docNumField(path,label,value,docId,required){
+  const fid=docNumFieldId(path);
+  return frow(label,
+    `<div style="display:flex;gap:5px">
+      <input class="fi" id="${fid}" readonly value="${(value||'').replace(/"/g,'&quot;')}" placeholder="No document selected — use Search" style="background:var(--s2);cursor:default;flex:1">
+      <input type="hidden" id="${fid}__docid" value="${docId||''}">
+      <button type="button" class="btn btn-s" onclick="docNumPickerOpen('${fid}')" title="Search document register"><i class="ti ti-search"></i></button>
+      <button type="button" class="btn btn-s" id="${fid}__pdfbtn" style="${docId?'':'display:none'}" onclick="docNumOpenPdf('${fid}')" title="Open attached PDF"><i class="ti ti-file-text"></i></button>
+    </div>`,
+    required?'*':'');
+}
+function docNumFieldValue(path){
+  const fid=docNumFieldId(path);
+  const input=document.getElementById(fid),hidden=document.getElementById(fid+'__docid');
+  return {value:input?input.value:'',docId:hidden?hidden.value:''};
+}
+function getPath(obj,path){return path.split('.').reduce((o,k)=>(o==null?o:o[k]),obj);}
+function setPath(obj,path,val){
+  const ks=path.split('.');let o=obj;
+  for(let i=0;i<ks.length-1;i++){ if(!o[ks[i]])o[ks[i]]={}; o=o[ks[i]]; }
+  o[ks[ks.length-1]]=val;
+}
+// Reads every docNumField's current value+docId back into a form object at
+// submit time — these fields are read-only/picker-driven, so (unlike the
+// oninput-bound text fields around them) nothing keeps them live-synced.
+function docNumSyncToForm(formObj,paths){
+  paths.forEach((path)=>{
+    const {value,docId}=docNumFieldValue(path);
+    setPath(formObj,path,value);
+    setPath(formObj,path+'DocId',docId);
+  });
+}
+
+let _docNumPickerTargetId=null;
+// Set instead of _docNumPickerTargetId when the picker is adding into a
+// multi-value list (e.g. ECO's affected documents) rather than filling a
+// single field — holds the name of a global function to call with
+// (docId, fullNumber) once a document is picked.
+let _docNumPickerOnSelect=null;
+function _docNumPickerOpenModal(){
+  document.getElementById('mP-hdr').innerHTML=
+    '<div style="flex:1"><div class="modal-title" style="font-size:14px"><i class="ti ti-search" style="color:var(--acc);vertical-align:-2px"></i> Search Document Register</div><div style="font-size:11px;color:var(--t2);margin-top:2px">Select a document to insert its number — manual entry is not permitted.</div></div>'
+    +'<button class="btn btn-s" onclick="closeModal(\'mP\')"><i class="ti ti-x"></i></button>';
+  document.getElementById('mP-body').innerHTML=
+    '<div style="position:relative;margin-bottom:12px"><i class="ti ti-search" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:14px"></i>'
+    +'<input class="fi" id="docnum-search" placeholder="Search by document number or title…" style="padding-left:30px" oninput="docNumPickerRender()"></div>'
+    +'<div id="docnum-results" style="font-size:12px;color:var(--t3);text-align:center;padding:14px">Loading…</div>';
+  document.getElementById('mP-foot').innerHTML='<button class="btn" style="margin-left:auto" onclick="closeModal(\'mP\')">Cancel</button>';
+  const box=document.getElementById('mP-box');if(box)box.style.setProperty('--mw','640px');
+  openModal('mP');
+  docNumPickerRender();
+}
+function docNumPickerOpen(fieldId){
+  _docNumPickerTargetId=fieldId;
+  _docNumPickerOnSelect=null;
+  _docNumPickerOpenModal();
+}
+// Opens the same search modal, but a pick appends to a list instead of
+// filling one field — used by ECO's Affected Documents.
+function docNumPickerOpenList(onSelectFnName){
+  _docNumPickerTargetId=null;
+  _docNumPickerOnSelect=onSelectFnName;
+  _docNumPickerOpenModal();
+}
+async function docNumPickerRender(){
+  const q=(document.getElementById('docnum-search')?.value||'').trim();
+  const box=document.getElementById('docnum-results');
+  if(!box)return;
+  try{
+    const results=await API.docRegisterLookup(q);
+    if(!results.length){
+      box.innerHTML='<div style="text-align:center;padding:24px;color:var(--t3);font-size:12px"><i class="ti ti-search-off" style="font-size:26px;display:block;margin-bottom:6px"></i>No matching documents in the register.</div>';
+      return;
+    }
+    box.innerHTML='<table class="tbl"><thead><tr><th>Doc. No.</th><th>Title</th><th style="width:34px"></th><th style="width:80px"></th></tr></thead><tbody>'
+      +results.map(r=>{
+        const num=(r.fullNumber||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+        return `<tr class="cl" onclick="docNumPickerSelect('${r.id}','${num}')">
+          <td style="font-weight:700;font-size:11px">${r.fullNumber||'—'}</td>
+          <td style="font-size:12px;white-space:normal">${r.title||'—'}</td>
+          <td>${r.hasAttachment?'<i class="ti ti-file-type-pdf" style="color:var(--red)" title="PDF attached"></i>':''}</td>
+          <td><button class="btn btn-s btn-a" onclick="event.stopPropagation();docNumPickerSelect('${r.id}','${num}')"><i class="ti ti-check"></i>Select</button></td>
+        </tr>`;
+      }).join('')
+      +'</tbody></table>';
+  }catch(err){
+    box.innerHTML='<div class="wb">Could not search the document register: '+err.message+'</div>';
+  }
+}
+function docNumPickerSelect(docId,fullNumber){
+  if(_docNumPickerOnSelect){
+    const fn=window[_docNumPickerOnSelect];
+    closeModal('mP');
+    if(typeof fn==='function')fn(docId,fullNumber);
+    return;
+  }
+  const fid=_docNumPickerTargetId;
+  if(!fid){closeModal('mP');return;}
+  const input=document.getElementById(fid);
+  const hidden=document.getElementById(fid+'__docid');
+  const pdfBtn=document.getElementById(fid+'__pdfbtn');
+  if(input)input.value=fullNumber;
+  if(hidden)hidden.value=docId;
+  if(pdfBtn)pdfBtn.style.display='';
+  closeModal('mP');
+}
+function docNumOpenPdf(fieldId){
+  const hidden=document.getElementById(fieldId+'__docid');
+  const docId=hidden?hidden.value:'';
+  if(!docId)return;
+  openDocRegisterPdfViewer(docId);
+}
+// Floating (not full-screen) PDF viewer. Uses Modal C rather than Modal A —
+// several call sites for this (e.g. the EWO detail popup) already live
+// inside Modal A themselves, and reusing it here would overwrite that
+// parent view instead of floating above it. Modal C (the WI op-block
+// editor) is never open at the same time as any of those.
+function openDocRegisterPdfViewer(docId){
+  const box=document.getElementById('mC-box');if(box)box.style.setProperty('--mw','900px');
+  document.getElementById('mC-hdr').innerHTML=
+    '<div style="flex:1"><div class="modal-title" style="font-size:14px"><i class="ti ti-file-type-pdf" style="color:var(--red);vertical-align:-2px"></i> Attached document — '+docId+'</div></div><button class="btn btn-s" onclick="closeModal(\'mC\')"><i class="ti ti-x"></i></button>';
+  document.getElementById('mC-body').innerHTML=
+    '<iframe src="/api/doc-register/'+encodeURIComponent(docId)+'/attachment" style="width:100%;height:74vh;border:1px solid var(--bd);border-radius:6px" title="Attached PDF"></iframe>';
+  document.getElementById('mC-foot').innerHTML=
+    '<button class="btn" style="margin-left:auto" onclick="closeModal(\'mC\')">Close</button>';
+  openModal('mC');
+}
+
+// ECO's "Affected documents" is a multi-value document-number list rather
+// than a single field, so it can't reuse docNumField directly — but it
+// shares the same picker modal via docNumPickerOpenList. Entries created
+// before this feature existed are plain strings; normalize those to the
+// {label, docId} shape on the fly so old ECOs still render fine (just
+// without a PDF-open button, since there's no docId to attach one to).
+function ecoDocItem(d){ return (d&&typeof d==='object') ? d : {label:d||'',docId:null}; }
+// `removeOnClick(idx)` returns the onclick JS for that row's Remove button —
+// a function rather than a bare name since the detail view's remover needs
+// the ECO id baked in too, not just the index.
+function ecoDocsListHtml(list,removeOnClick){
+  if(!list||!list.length)return '<div style="font-size:11px;color:var(--t3);padding:4px 0">No documents added yet.</div>';
+  return list.map((raw,idx)=>{
+    const d=ecoDocItem(raw);
+    return `<div style="display:flex;align-items:center;gap:6px;background:var(--s2);border-radius:6px;padding:5px 8px;margin-bottom:4px">
+      <i class="ti ti-file" style="font-size:12px;color:var(--t2)"></i>
+      <span style="font-size:12px;flex:1">${d.label||'—'}</span>
+      ${d.docId?`<button type="button" class="btn btn-s" onclick="openDocRegisterPdfViewer('${d.docId}')" title="Open attached PDF"><i class="ti ti-file-text"></i></button>`:''}
+      <button type="button" class="btn btn-s" onclick="${removeOnClick(idx)}" title="Remove"><i class="ti ti-x"></i></button>
+    </div>`;
+  }).join('');
+}
+
+// -- New ECO form (create) --
+function ecoFormDocsListHtml(){ return ecoDocsListHtml(DDM_FORM_ECO&&DDM_FORM_ECO.affectedDocuments,idx=>`ecoFormRemoveDoc(${idx})`); }
+function ecoFormAddDoc(docId,fullNumber){
+  if(!DDM_FORM_ECO)return;
+  if(!Array.isArray(DDM_FORM_ECO.affectedDocuments))DDM_FORM_ECO.affectedDocuments=[];
+  if(DDM_FORM_ECO.affectedDocuments.some(d=>ecoDocItem(d).docId===docId))return;
+  DDM_FORM_ECO.affectedDocuments.push({label:fullNumber,docId});
+  render();
+}
+function ecoFormRemoveDoc(idx){
+  if(!DDM_FORM_ECO)return;
+  DDM_FORM_ECO.affectedDocuments.splice(idx,1);
+  render();
+}
+
+// -- Existing ECO detail (edit) — changes persist immediately, same as
+// every other inline control on this page (ddmToggleImpl, ddmSignECO...).
+let _ecoDetailEditId=null;
+function ecoDetailAddDoc(docId,fullNumber){
+  const e=DDM_ECOS.find(x=>x.id===_ecoDetailEditId);if(!e)return;
+  if(!Array.isArray(e.affectedDocuments))e.affectedDocuments=[];
+  if(e.affectedDocuments.some(d=>ecoDocItem(d).docId===docId))return;
+  e.affectedDocuments.push({label:fullNumber,docId});
+  render();persistECO(e);
+}
+function ecoDetailRemoveDoc(ecoId,idx){
+  const e=DDM_ECOS.find(x=>x.id===ecoId);if(!e)return;
+  e.affectedDocuments.splice(idx,1);
+  render();persistECO(e);
 }
 
 /* bootstrap */

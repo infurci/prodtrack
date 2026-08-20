@@ -286,3 +286,15 @@ DROP TRIGGER IF EXISTS trg_ddmr_touch ON doc_registers;
 CREATE TRIGGER trg_ddmr_touch
   BEFORE UPDATE ON doc_registers
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- The PDF the register entry actually controls — same pattern as
+-- controlled_documents' attachment columns. Kept as real columns (not
+-- inside `data`) since multer/file-serving needs a stored filename to
+-- query directly, and attachment_stored_name is server-generated so it
+-- can never be used for path traversal.
+ALTER TABLE doc_registers ADD COLUMN IF NOT EXISTS attachment_original_name  TEXT;
+ALTER TABLE doc_registers ADD COLUMN IF NOT EXISTS attachment_stored_name    TEXT;
+ALTER TABLE doc_registers ADD COLUMN IF NOT EXISTS attachment_mime           TEXT;
+ALTER TABLE doc_registers ADD COLUMN IF NOT EXISTS attachment_size           INTEGER;
+ALTER TABLE doc_registers ADD COLUMN IF NOT EXISTS attachment_uploaded_at    TIMESTAMPTZ;
+ALTER TABLE doc_registers ADD COLUMN IF NOT EXISTS attachment_uploaded_by    INTEGER REFERENCES users(id);

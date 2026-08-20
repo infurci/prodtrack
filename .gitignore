@@ -4,3 +4,5 @@ uploads/documents/*
 !uploads/documents/.gitkeep
 uploads/doa-documents/*
 !uploads/doa-documents/.gitkeep
+uploads/doc-register/*
+!uploads/doc-register/.gitkeep
