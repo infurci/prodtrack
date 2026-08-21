@@ -11,14 +11,32 @@ const { checkPassword } = require('../middleware/password');
 const router = express.Router();
 
 // Fields a change request may propose — these never change via a plain PUT,
-// only through the change-request/approve flow below.
-const GATED_FIELDS = ['component', 'partNo', 'elbitPn', 'drawingNo', 'batchNo', 'rev', 'startDate', 'priority', 'assignedTo', 'hazmat'];
+// only through the change-request/approve flow below. drawingNoDocId travels
+// alongside drawingNo so the two never drift apart across an approval.
+const GATED_FIELDS = ['component', 'partNo', 'customerPn', 'drawingNo', 'drawingNoDocId', 'batchNo', 'rev', 'startDate', 'priority', 'assignedTo', 'hazmat'];
+
+// Everything that isn't one of these top-level, real-column fields falls
+// into `extra` (JSONB) — the catch-all for Layer-2 WO-form fields (further
+// applicable data, tooling, materials, sign-offs, outsourcing, etc.) that
+// don't need their own column. Keeping this as an omit-list rather than an
+// explicit whitelist means a new Layer-2 field added to the frontend form
+// just works without a route change.
+const CORE_FIELDS = new Set([
+  'id', 'component', 'partNo', 'customerPn', 'drawingNo', 'drawingNoDocId', 'batchNo', 'rev',
+  'status', 'priority', 'startDate', 'assignedTo', 'hazmat', 'notes', 'ops', 'wiId', 'extraOps',
+  'pendingChange', 'pendingRequestedById', 'pendingRequestedByName', 'pendingRequestedAt',
+]);
+function pickExtra(b) {
+  const extra = {};
+  Object.keys(b || {}).forEach((k) => { if (!CORE_FIELDS.has(k)) extra[k] = b[k]; });
+  return extra;
+}
 
 // Convert a DB row (snake_case) into the camelCase shape the frontend expects.
 function rowToWO(r) {
   return {
-    id: r.id, component: r.component, partNo: r.part_no, elbitPn: r.elbit_pn,
-    drawingNo: r.drawing_no, batchNo: r.batch_no, rev: r.rev, status: r.status,
+    id: r.id, component: r.component, partNo: r.part_no, customerPn: r.customer_pn,
+    drawingNo: r.drawing_no, drawingNoDocId: r.drawing_no_doc_id, batchNo: r.batch_no, rev: r.rev, status: r.status,
     priority: r.priority, startDate: r.start_date, assignedTo: r.assigned_to,
     hazmat: r.hazmat, notes: r.notes, ops: r.ops, wiId: r.wi_id, extraOps: r.extra_ops, ...r.extra,
     pendingChange: r.pending_change,
@@ -64,14 +82,14 @@ router.post('/', requireAuth, requireRole('engineer', 'admin'), async (req, res)
   try {
     const { rows } = await pool.query(
       `INSERT INTO work_orders
-        (id, component, part_no, elbit_pn, drawing_no, batch_no, rev,
-         status, priority, start_date, assigned_to, hazmat, notes, ops, wi_id, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        (id, component, part_no, customer_pn, drawing_no, drawing_no_doc_id, batch_no, rev,
+         status, priority, start_date, assigned_to, hazmat, notes, ops, extra, wi_id, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
        RETURNING *`,
-      [b.id, b.component, b.partNo, b.elbitPn, b.drawingNo, b.batchNo, b.rev || '—',
+      [b.id, b.component, b.partNo, b.customerPn, b.drawingNo, b.drawingNoDocId || null, b.batchNo, b.rev || '—',
        b.status || 'pending', b.priority || 'normal', b.startDate || null,
        JSON.stringify(b.assignedTo || []), !!b.hazmat, b.notes || '',
-       JSON.stringify(b.ops || []), b.wiId || null, req.user.id]
+       JSON.stringify(b.ops || []), JSON.stringify(pickExtra(b)), b.wiId || null, req.user.id]
     );
     res.status(201).json(rowToWO(rows[0]));
   } catch (err) {
@@ -82,16 +100,18 @@ router.post('/', requireAuth, requireRole('engineer', 'admin'), async (req, res)
 });
 
 // PUT /api/workorders/:id   (engineer/admin)
-// Day-to-day fields only (status, notes, operation progress). Planning
+// Day-to-day fields (status, notes, operation progress) plus everything
+// that lands in `extra` (Layer-2 form fields like further applicable data,
+// tooling, materials, sign-offs — see pickExtra above). Gated planning
 // fields (component, part numbers, drawing/batch no., rev, dates, priority,
-// assigned personnel, hazmat) can't be changed here — see the change-request
-// endpoints below, which route those through approval.
+// assigned personnel, hazmat) still can't be changed here — see the
+// change-request endpoints below, which route those through approval.
 router.put('/:id', requireAuth, requireRole('engineer', 'admin'), async (req, res) => {
   const b = req.body || {};
   try {
     const { rows } = await pool.query(
-      `UPDATE work_orders SET status=$2, notes=$3, ops=$4 WHERE id=$1 RETURNING *`,
-      [req.params.id, b.status, b.notes || '', JSON.stringify(b.ops || [])]
+      `UPDATE work_orders SET status=$2, notes=$3, ops=$4, extra=$5 WHERE id=$1 RETURNING *`,
+      [req.params.id, b.status, b.notes || '', JSON.stringify(b.ops || []), JSON.stringify(pickExtra(b))]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Work order not found.' });
     const { rows: full } = await pool.query(`${SELECT_WO} WHERE wo.id = $1`, [req.params.id]);
@@ -144,11 +164,11 @@ router.post('/:id/change-request/approve', requireAuth, requireRole('quality', '
     const c = wo.pending_change;
     await pool.query(
       `UPDATE work_orders SET
-         component=$2, part_no=$3, elbit_pn=$4, drawing_no=$5, batch_no=$6, rev=$7,
-         priority=$8, start_date=$9, assigned_to=$10, hazmat=$11,
+         component=$2, part_no=$3, customer_pn=$4, drawing_no=$5, drawing_no_doc_id=$6, batch_no=$7, rev=$8,
+         priority=$9, start_date=$10, assigned_to=$11, hazmat=$12,
          pending_change=NULL, pending_requested_by=NULL, pending_requested_at=NULL
        WHERE id=$1`,
-      [req.params.id, c.component, c.partNo, c.elbitPn, c.drawingNo, c.batchNo, c.rev,
+      [req.params.id, c.component, c.partNo, c.customerPn, c.drawingNo, c.drawingNoDocId || null, c.batchNo, c.rev,
        c.priority, c.startDate || null, JSON.stringify(c.assignedTo || []), !!c.hazmat]
     );
     const { rows } = await pool.query(`${SELECT_WO} WHERE wo.id = $1`, [req.params.id]);

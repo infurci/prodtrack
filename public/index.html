@@ -595,22 +595,12 @@ async function ptBoot(){
    These represent controlled documents & catalogues
 ════════════════════════════════════════════ */
 const LIB={
-  // Applicable Document Requirements
-  docs:[
-    {id:'D1',ref:'PS 11-000',rev:'C',title:'General Laminating Process Spec',type:'Process Spec',date:'2023-01-15',file:''},
-    {id:'D2',ref:'PS 11-001',rev:'B',title:'Curing Process Specification',type:'Process Spec',date:'2023-03-02',file:''},
-    {id:'D3',ref:'PS 11-002',rev:'A',title:'Mould Preparation Standard',type:'Process Spec',date:'2022-11-20',file:''},
-    {id:'D4',ref:'AS9100',rev:'D',title:'Quality Management Systems — Aerospace',type:'Standard',date:'2016-09-01',file:''},
-    {id:'D5',ref:'NADCAP AC7118',rev:'—',title:'Composites Audit Criteria',type:'Standard',date:'2021-06-10',file:''},
-  ],
-  // Drawings
-  drawings:[
-    {id:'DR1',ref:'54-DP-000675',rev:'—',title:'Front Fuel Tank Bulkhead',date:'2010-06-24',file:''},
-    {id:'DR2',ref:'54-DP-000681',rev:'A',title:'Aft Fuselage Skin Panel',date:'2011-02-14',file:''},
-    {id:'DR3',ref:'54-DP-000695',rev:'B',title:'Main Spar Web — Centre Section',date:'2012-08-30',file:''},
-    {id:'DR4',ref:'PRT-V21-580-101-XXX',rev:'A00',title:'Shear Web Assembly',date:'2023-05-12',file:''},
-    {id:'DR5',ref:'54-10-00560-00',rev:'—',title:'Fwd Fuel Tank Bulkhead — Detail',date:'2010-06-16',file:''},
-  ],
+  // Applicable Document Requirements and Drawings used to have their own
+  // static catalogues here (docs/drawings) — removed in favour of the real
+  // Document Register (search via docNumPickerOpen/-List), since a static
+  // demo list let people pick a "document" that wasn't actually in the
+  // register. See docNumField (Drawing Number) and WO_FURTHER_DOCS
+  // (Further applicable data) in the New WO form.
   // Instructions / Procedures
   procedures:[
     {id:'P1',ref:'VMI-510-101-XXX',rev:'A00',title:'Laminating Work Instruction',date:'2023-04-01',file:''},
@@ -823,17 +813,17 @@ function syncWOOpsFromWI(wo){
    WORK ORDERS
 ════════════════════════════════════════════ */
 let WOS=[
-  {id:'WO-2024-001',component:'Fwd Fuel Tank Bulkhead',partNo:'362-12120',elbitPn:'54-10-00560-00',drawingNo:'54-DP-000675',batchNo:'B-2024-FTB-001',rev:'—',status:'in-progress',startDate:'2024-06-10',priority:'high',assignedTo:['A. Lima','T. Ribeiro'],hazmat:true,notes:'Resins — gloves mandatory at all times. PPE per H&S sheet p.3.',wiId:STD_WI_ID,
+  {id:'WO-2024-001',component:'Fwd Fuel Tank Bulkhead',partNo:'362-12120',customerPn:'54-10-00560-00',drawingNo:'54-DP-000675',batchNo:'B-2024-FTB-001',rev:'—',status:'in-progress',startDate:'2024-06-10',priority:'high',assignedTo:['A. Lima','T. Ribeiro'],hazmat:true,notes:'Resins — gloves mandatory at all times. PPE per H&S sheet p.3.',wiId:STD_WI_ID,
    ops:cloneOps(['done','done','done','done','in-progress','pending','pending','pending','pending','pending','pending'])},
-  {id:'WO-2024-002',component:'Aft Fuselage Skin Panel',partNo:'362-14200',elbitPn:'54-10-00581-00',drawingNo:'54-DP-000681',batchNo:'B-2024-AFS-002',rev:'A',status:'in-progress',startDate:'2024-06-11',priority:'high',assignedTo:['M. Santos'],hazmat:true,notes:'Check fibre direction carefully — asymmetric layup.',wiId:STD_WI_ID,
+  {id:'WO-2024-002',component:'Aft Fuselage Skin Panel',partNo:'362-14200',customerPn:'54-10-00581-00',drawingNo:'54-DP-000681',batchNo:'B-2024-AFS-002',rev:'A',status:'in-progress',startDate:'2024-06-11',priority:'high',assignedTo:['M. Santos'],hazmat:true,notes:'Check fibre direction carefully — asymmetric layup.',wiId:STD_WI_ID,
    ops:cloneOps(['done','done','in-progress','pending','pending','pending','pending','pending','pending','pending','pending'])},
-  {id:'WO-2024-003',component:'Main Spar Web — Centre Section',partNo:'362-15010',elbitPn:'54-10-00590-00',drawingNo:'54-DP-000695',batchNo:'B-2024-MSW-003',rev:'B',status:'quality-hold',startDate:'2024-06-09',priority:'critical',assignedTo:['C. Neves','R. Alves'],hazmat:true,notes:'Critical primary structure — 100% inspection required.',wiId:STD_WI_ID,
+  {id:'WO-2024-003',component:'Main Spar Web — Centre Section',partNo:'362-15010',customerPn:'54-10-00590-00',drawingNo:'54-DP-000695',batchNo:'B-2024-MSW-003',rev:'B',status:'quality-hold',startDate:'2024-06-09',priority:'critical',assignedTo:['C. Neves','R. Alves'],hazmat:true,notes:'Critical primary structure — 100% inspection required.',wiId:STD_WI_ID,
    ops:cloneOps(['done','done','done','done','done','done','quality-hold','pending','pending','pending','pending'])},
-  {id:'WO-2024-004',component:'Rudder Trailing Edge',partNo:'362-16400',elbitPn:'54-10-00602-00',drawingNo:'54-DP-000710',batchNo:'B-2024-RTE-004',rev:'—',status:'complete',startDate:'2024-06-07',priority:'normal',assignedTo:['P. Mota'],hazmat:false,notes:'',wiId:STD_WI_ID,
+  {id:'WO-2024-004',component:'Rudder Trailing Edge',partNo:'362-16400',customerPn:'54-10-00602-00',drawingNo:'54-DP-000710',batchNo:'B-2024-RTE-004',rev:'—',status:'complete',startDate:'2024-06-07',priority:'normal',assignedTo:['P. Mota'],hazmat:false,notes:'',wiId:STD_WI_ID,
    ops:cloneOps(['done','done','done','done','done','done','done','done','done','done','done'])},
-  {id:'WO-2024-005',component:'Elevator Skin — Upper',partNo:'362-17100',elbitPn:'54-10-00615-00',drawingNo:'54-DP-000722',batchNo:'B-2024-ESU-005',rev:'A',status:'pending',startDate:'2024-06-13',priority:'normal',assignedTo:[],hazmat:false,notes:'Awaiting mould release from WO-2024-004.',wiId:STD_WI_ID,
+  {id:'WO-2024-005',component:'Elevator Skin — Upper',partNo:'362-17100',customerPn:'54-10-00615-00',drawingNo:'54-DP-000722',batchNo:'B-2024-ESU-005',rev:'A',status:'pending',startDate:'2024-06-13',priority:'normal',assignedTo:[],hazmat:false,notes:'Awaiting mould release from WO-2024-004.',wiId:STD_WI_ID,
    ops:cloneOps([])},
-  {id:'WO-2024-006',component:'Wing Root Rib No.3',partNo:'362-18050',elbitPn:'54-10-00627-00',drawingNo:'54-DP-000735',batchNo:'B-2024-WRR-006',rev:'—',status:'pending',startDate:'2024-06-14',priority:'low',assignedTo:[],hazmat:false,notes:'',wiId:STD_WI_ID,
+  {id:'WO-2024-006',component:'Wing Root Rib No.3',partNo:'362-18050',customerPn:'54-10-00627-00',drawingNo:'54-DP-000735',batchNo:'B-2024-WRR-006',rev:'—',status:'pending',startDate:'2024-06-14',priority:'low',assignedTo:[],hazmat:false,notes:'',wiId:STD_WI_ID,
    ops:cloneOps([])},
 ];
 
@@ -1108,16 +1098,16 @@ function openWODetail(woId){
       ],2)}
       ${woGrid([
         ['Part / Assy P/N',wo.partNo||'—'],['Part / Assy description',wo.component],
-        ['Elbit P/N',wo.elbitPn||'—'],['Part / Assy S/N',wo.partSN||'—'],
+        ['Customer P/N',wo.customerPn||'—'],['Part / Assy S/N',wo.partSN||'—'],
         ['Batch / Lot no.',wo.batchNo||'—'],['A/C S/N',wo.aircraftSN||'—'],
       ],2)}
     `)}
 
     ${woSec('Applicable Document Requirements','ti-book-2',`
       ${woGrid([
-        ['Drawing no. — Rev',`${wo.drawingNo||'—'} Rev ${wo.rev||'—'}`],
+        ['Drawing no. — Rev',`${wo.drawingNo||'—'} Rev ${wo.rev||'—'}${wo.drawingNoDocId?` <button class="btn btn-s" style="padding:0 5px" onclick="openDocRegisterPdfViewer('${wo.drawingNoDocId}')" title="Open attached PDF"><i class="ti ti-file-text" style="font-size:10px"></i></button>`:''}`],
         ['Instruction / Procedure — Rev.',wo.procedureRef||'—'],
-        ['Further applicable data',wo.furtherDocs||'—'],
+        ['Further applicable data',(wo.furtherDocsList&&wo.furtherDocsList.length)?wo.furtherDocsList.map(d=>`${d.label}${d.docId?` <button class="btn btn-s" style="padding:0 5px" onclick="openDocRegisterPdfViewer('${d.docId}')" title="Open attached PDF"><i class="ti ti-file-text" style="font-size:10px"></i></button>`:''}`).join('<br>'):(wo.furtherDocs||'—')],
       ],1)}
     `)}
 
@@ -1265,7 +1255,7 @@ async function removeExtraOpUI(woId,wiId,opId){
 }
 
 /* ── WO CHANGE-REQUEST APPROVAL ── */
-const WO_GATED_FIELDS=[['component','Component'],['partNo','Part / Assy P/N'],['elbitPn','Elbit P/N'],['drawingNo','Drawing no.'],['batchNo','Batch no.'],['rev','Revision'],['startDate','Start date'],['priority','Priority'],['assignedTo','Assigned personnel'],['hazmat','Hazmat']];
+const WO_GATED_FIELDS=[['component','Component'],['partNo','Part / Assy P/N'],['customerPn','Customer P/N'],['drawingNo','Drawing no.'],['batchNo','Batch no.'],['rev','Revision'],['startDate','Start date'],['priority','Priority'],['assignedTo','Assigned personnel'],['hazmat','Hazmat']];
 function woFieldFmt(k,v){
   if(k==='assignedTo') return Array.isArray(v)&&v.length?v.join(', '):'—';
   if(k==='hazmat') return v?'Yes':'No';
@@ -1747,7 +1737,7 @@ function openNewWOForm(editId){
       frow('Part / Assy S/N',fi('nw-psn','e.g. 0001',g(wo&&wo.partSN))),
     ])
     +ggrid('1fr 1fr 1fr',[
-      frow('Elbit / Customer P/N',fi('nw-epn','e.g. 54-10-00560-00',g(wo&&wo.elbitPn))),
+      frow('Customer P/N',fi('nw-epn','e.g. 54-10-00560-00',g(wo&&wo.customerPn))),
       frow('Batch / Lot no.',fi('nw-batch','e.g. B-2024-XXX-007',g(wo&&wo.batchNo)),'*'),
       frow('A/C S/N',fi('nw-acsn','e.g. MSNXXX',g(wo&&wo.aircraftSN))),
     ])
@@ -1782,11 +1772,16 @@ function openNewWOForm(editId){
   );
 
   /* ── SECTION 3: DOCUMENT REQUIREMENTS ── */
+  // Drawing Number and Further applicable data are picked exclusively from
+  // the Document Register (docNumField / docNumPickerOpenList) — no manual
+  // entry and nothing outside the register can be selected. Instruction /
+  // Procedure still uses the separate tool/material-style catalogue picker.
+  WO_FURTHER_DOCS=(wo&&Array.isArray(wo.furtherDocsList))?JSON.parse(JSON.stringify(wo.furtherDocsList))
+    :(wo&&wo.furtherDocs?String(wo.furtherDocs).split(',').map(function(s){return{label:s.trim(),docId:null};}).filter(function(d){return d.label;}):[]);
   body+=fsec('Applicable Document Requirements','ti-book-2',
-    '<div style="font-size:11px;color:var(--t2);margin-bottom:9px"><i class="ti ti-info-circle"></i> Click any field below to search the controlled-document library or upload a new record.</div>'
+    '<div style="font-size:11px;color:var(--t2);margin-bottom:9px"><i class="ti ti-info-circle"></i> Drawing Number and Further applicable data are picked from the Document Register — no manual entry. Click the search icon on Instruction / Procedure to use the procedure catalogue.</div>'
     +ggrid('1fr 120px',[
-      frow('Drawing Number — Rev.N.',
-        '<input class="fi" id="nw-drw" placeholder="Click to search drawings…" value="'+(g(wo&&wo.drawingNo)).replace(/"/g,'&quot;')+'" readonly style="cursor:pointer;background:var(--s2)" onclick="pickDrawing()">','*'),
+      docNumFieldRaw('nw-drw','Drawing Number — Rev.N.',g(wo&&wo.drawingNo),g(wo&&wo.drawingNoDocId),true),
       frow('Revision',fi('nw-rev','A00',g(wo&&wo.rev),'text','readonly style="background:var(--s2)"')),
     ])
     +frow('Instruction / Procedure — Rev.N.',
@@ -1794,8 +1789,8 @@ function openNewWOForm(editId){
       +'<button class="btn btn-s" onclick="pickProcedure(false)" title="Add another"><i class="ti ti-plus"></i></button></div>')
     +'<div style="margin-bottom:7px"></div>'
     +frow('Further applicable data (Applicable Document Requirements)',
-      '<div style="display:flex;gap:5px"><input class="fi" id="nw-fdocs" placeholder="Click to search applicable documents…" value="'+(g(wo&&wo.furtherDocs)).replace(/"/g,'&quot;')+'" readonly style="cursor:pointer;background:var(--s2);flex:1" onclick="pickDoc(true)">'
-      +'<button class="btn btn-s" onclick="pickDoc(false)" title="Add another"><i class="ti ti-plus"></i></button></div>')
+      '<div id="nw-fdocs-wrap">'+woFurtherDocsListHtml()+'</div>'
+      +'<button type="button" class="btn btn-s" style="margin-top:4px" onclick="docNumPickerOpenList(\'woFurtherDocPicked\')"><i class="ti ti-search"></i>Add document</button>')
   );
 
   /* ── SECTION 4: TOOLS & EQUIPMENT ── */
@@ -2017,12 +2012,10 @@ function removeMatRow(btn){
 }
 
 /* ── picker targets: fill the right field/row ── */
-function pickDrawing(){
-  openPicker('drawings',function(item,label){
-    document.getElementById('nw-drw').value=item.ref;
-    var rev=document.getElementById('nw-rev');if(rev)rev.value=item.rev||'';
-  });
-}
+// Drawing Number is a single docNumField (id 'nw-drw') — docNumPickerOpen
+// handles filling it and its hidden __docid directly, same as any other
+// docNumField. Only the Search button's onclick (in the form HTML above)
+// needs to call it; no dedicated pickDrawing() wrapper is needed any more.
 function pickProcedure(replace){
   openPicker('procedures',function(item,label){
     var el=document.getElementById('nw-proc');
@@ -2030,12 +2023,28 @@ function pickProcedure(replace){
     else el.value=el.value+', '+label;
   });
 }
-function pickDoc(replace){
-  openPicker('docs',function(item,label){
-    var el=document.getElementById('nw-fdocs');
-    if(replace||!el.value.trim())el.value=label;
-    else el.value=el.value+', '+label;
-  });
+
+// Further applicable data — multi-value, picked from the Document Register
+// only (docNumPickerOpenList), reusing the same {label,docId} list widget
+// ECO's Affected Documents uses (ecoDocsListHtml). WO_FURTHER_DOCS holds
+// the list for whichever New/Edit WO form is currently open; it's not a
+// render()-from-state form (Modal D is built once per open), so adding or
+// removing an item refreshes only its own wrapper div rather than the
+// whole form — same reasoning as docregRefreshAttachmentBlock.
+let WO_FURTHER_DOCS=[];
+function woFurtherDocsListHtml(){ return ecoDocsListHtml(WO_FURTHER_DOCS,function(idx){return 'woRemoveFurtherDoc('+idx+')';}); }
+function woRefreshFurtherDocs(){
+  var el=document.getElementById('nw-fdocs-wrap');
+  if(el)el.innerHTML=woFurtherDocsListHtml();
+}
+function woFurtherDocPicked(docId,fullNumber){
+  if(WO_FURTHER_DOCS.some(function(d){return d.docId===docId;}))return;
+  WO_FURTHER_DOCS.push({label:fullNumber,docId:docId});
+  woRefreshFurtherDocs();
+}
+function woRemoveFurtherDoc(idx){
+  WO_FURTHER_DOCS.splice(idx,1);
+  woRefreshFurtherDocs();
 }
 function pickToolForRow(btn){
   var row=btn.closest('.tool-row');
@@ -2134,12 +2143,14 @@ function saveNewWO(editId){
     division:g('nw-div'),routingNo:g('nw-routing'),
     priority:document.getElementById('nw-pri').value,
     partNo:pn,partDesc:g('nw-pdesc')||comp,
-    elbitPn:g('nw-epn')||'—',partSN:g('nw-psn'),
+    customerPn:g('nw-epn')||'—',partSN:g('nw-psn'),
     batchNo:batch,aircraftSN:g('nw-acsn'),
     startDate:date,endDate:g('nw-end'),
     hazmat:document.getElementById('nw-haz').value==='true',
-    drawingNo:g('nw-drw')||'—',rev:g('nw-rev')||'—',
-    procedureRef:g('nw-proc'),furtherDocs:g('nw-fdocs'),
+    drawingNo:g('nw-drw')||'—',drawingNoDocId:g('nw-drw__docid')||null,rev:g('nw-rev')||'—',
+    procedureRef:g('nw-proc'),
+    furtherDocs:WO_FURTHER_DOCS.map(function(d){return d.label;}).join(', '),
+    furtherDocsList:JSON.parse(JSON.stringify(WO_FURTHER_DOCS)),
     tools:tools,materials:materials,remarks:remarks,
     assignedTo:opsStr?opsStr.split(',').map(function(s){return s.trim();}).filter(Boolean):[],
     procurement:proc,outsource:proc==='outsource'?os:{},
@@ -2161,7 +2172,7 @@ function saveNewWO(editId){
       if(errEl){errEl.style.display='block';errMsg.textContent='This work order already has a change request awaiting approval.';}
       return;
     }
-    var gatedKeys=['component','partNo','elbitPn','drawingNo','batchNo','rev','startDate','priority','assignedTo','hazmat'];
+    var gatedKeys=['component','partNo','customerPn','drawingNo','drawingNoDocId','batchNo','rev','startDate','priority','assignedTo','hazmat'];
     var gated={}; gatedKeys.forEach(function(k){gated[k]=data[k];});
     var gateChanged=gatedKeys.some(function(k){return JSON.stringify(gated[k])!==JSON.stringify(current[k]);});
     var nonGated={}; Object.keys(data).forEach(function(k){ if(gatedKeys.indexOf(k)===-1) nonGated[k]=data[k]; });
@@ -2200,16 +2211,9 @@ function mD_discard(){closeModal('mD');}
 let _pickerKind=null, _pickerTarget=null;
 
 const PICKER_CFG={
-  docs:{title:'Applicable Document Requirement',icon:'ti-book-2',
-    cols:['Reference','Rev','Title','Type','Date'],
-    row:d=>[d.ref,d.rev,d.title,d.type,d.date],
-    match:(d,q)=>(d.ref+' '+d.title+' '+d.type).toLowerCase().includes(q),
-    label:d=>d.ref+' Rev '+d.rev+' — '+d.title},
-  drawings:{title:'Drawing Number — Rev.N.',icon:'ti-vector',
-    cols:['Drawing no.','Rev','Title','Date'],
-    row:d=>[d.ref,d.rev,d.title,d.date],
-    match:(d,q)=>(d.ref+' '+d.title).toLowerCase().includes(q),
-    label:d=>d.ref+'_'+d.rev},
+  // 'docs' and 'drawings' used to live here too — removed along with their
+  // LIB entries (see LIB comment above); both fields now go through the
+  // real Document Register picker instead.
   procedures:{title:'Instruction / Procedure — Rev.N.',icon:'ti-clipboard-text',
     cols:['Reference','Rev','Title','Date'],
     row:d=>[d.ref,d.rev,d.title,d.date],
@@ -2387,13 +2391,13 @@ function rejectGate(id){
 
 /* ════════════════════════════════════════════
    QMS DATA — AS9100D / EN9100
-   Based on SABCA M02-02-04-01 R09 structure
+   Based on M02-02-04-01 R09 structure
 ════════════════════════════════════════════ */
 
 // QMS State
 const QST = { sub: 'overview', dpForm:false, dpEdit:null, dpActive:null, dpFilterLevel:'all', dpFilterStatus:'all', dpSearch:'' };
 
-// Document Pyramid — unified controlled document register (AS9100D §7.5 / SABCA M02-02-04-01 R09)
+// Document Pyramid — unified controlled document register (AS9100D §7.5 / M02-02-04-01 R09)
 // Each doc: id, ref, level (QM/H4/H5/REC/MWI), category, title, rev, status, date, owner, standard, retention,
 //           description, applicability, writer, checker, approver, approvals:{writer,checker,approver},
 //           revHistory:[{rev,date,editor,object}], tags, format, language, linkedDocs
@@ -2407,7 +2411,7 @@ let QMS_DOCS_FLAT = [
   {id:'QD-001',ref:'QD-001',level:'QM',category:'manual',title:'Quality Management Manual',rev:'R03',status:'approved',date:'2025-01-15',owner:'QMS_MR',standard:'AS9100D §4',retention:'LOC',description:'Entry point of the QMS. Describes scope, processes, responsibilities and authorities across the INFURCI organisation.',applicability:'All INFURCI personnel and activities',writer:'QMS_MR',checker:'QLT_QMS_TM',approver:'QLT_DR',approvals:{writer:{signed:true,name:'A. Monkari',date:'2025-01-14'},checker:{signed:true,name:'M. Laduron',date:'2025-01-14'},approver:{signed:true,name:'K. Vandierendonck',date:'2025-01-15'}},revHistory:[{rev:'R00',date:'2019-06-01',editor:'QMS_MR',object:'Initial issue'},{rev:'R01',date:'2020-11-10',editor:'QMS_MR',object:'Scope update'},{rev:'R02',date:'2022-05-14',editor:'QMS_MR',object:'AS9100D Rev D alignment'},{rev:'R03',date:'2025-01-15',editor:'QMS_MR',object:'Complete overhaul — EASA Part-21 addition'}],tags:['QMS','Manual'],format:'PDF / SharePoint',language:'English',linkedDocs:['QD-002','M02-01']},
   {id:'QD-002',ref:'QD-002',level:'QM',category:'manual',title:'Design Organisation Interface Document (DOID)',rev:'R01',status:'approved',date:'2024-11-01',owner:'DES_DR',standard:'AS9100D §8.3',retention:'LOC',description:'Defines the interface between the Design Organisation and the Production Organisation, including responsibilities for design verification and release.',applicability:'Design and Production departments',writer:'DES_DR',checker:'QMS_MR',approver:'HDO',approvals:{writer:{signed:true,name:'R. Pellin',date:'2024-10-30'},checker:{signed:true,name:'QMS_MR',date:'2024-10-31'},approver:{signed:true,name:'HDO',date:'2024-11-01'}},revHistory:[{rev:'R00',date:'2023-03-01',editor:'DES_DR',object:'Initial issue'},{rev:'R01',date:'2024-11-01',editor:'DES_DR',object:'DOA scope update — EASA.21J.678 reference added'}],tags:['DOA','Design','Interface'],format:'PDF / SharePoint',language:'English',linkedDocs:['QD-001']},
   // H4 — Procedures
-  {id:'M02-01',ref:'M02-02-04-01',level:'H4',category:'procedures',title:'Organisation and Management of Documentation',rev:'R09',status:'approved',date:'2025-01-07',owner:'QLT_QMS_MR',standard:'AS9100D §7.5',retention:'6 YRS',description:'Defines the management rules for creation, approval, modification, and archiving of all documents in the SABCA/INFURCI document system. Covers document pyramid H1–H6, numbering, approval chain, diffusion, archiving, and destruction.',applicability:'All document creators — Quality, POW, PKU, Program Teams',writer:'QLT_QMS_MR',checker:'AFS_ICT_MR',approver:'M02-POW-TM',approvals:{writer:{signed:true,name:'Asmaa Monkari',date:'2025-01-07'},checker:{signed:true,name:'Miguel Laduron',date:'2025-01-07'},approver:{signed:true,name:'Kristine Vandierendonck',date:'2025-01-07'}},revHistory:[{rev:'R00',date:'2019-11-06',editor:'A. Monkari',object:'Creation — replaces MG-000-00, IQ40501, IQ40502, IQ41601'},{rev:'R05',date:'2022-03-11',editor:'A. Monkari',object:'PART21J removed; level 6 added; template nomenclatures updated'},{rev:'R06',date:'2022-11-28',editor:'A. Monkari',object:'Complete overhaul'},{rev:'R09',date:'2025-01-07',editor:'H. Cox',object:'§6.8.5 Archiving in IQSMS; SW End-of-subscription; Part 21G SMS'}],tags:['Documentation','Control'],format:'PDF / SharePoint',language:'English',linkedDocs:['QD-001']},
+  {id:'M02-01',ref:'M02-02-04-01',level:'H4',category:'procedures',title:'Organisation and Management of Documentation',rev:'R09',status:'approved',date:'2025-01-07',owner:'QLT_QMS_MR',standard:'AS9100D §7.5',retention:'6 YRS',description:'Defines the management rules for creation, approval, modification, and archiving of all documents in the INFURCI document system. Covers document pyramid H1–H6, numbering, approval chain, diffusion, archiving, and destruction.',applicability:'All document creators — Quality, POW, PKU, Program Teams',writer:'QLT_QMS_MR',checker:'AFS_ICT_MR',approver:'M02-POW-TM',approvals:{writer:{signed:true,name:'Asmaa Monkari',date:'2025-01-07'},checker:{signed:true,name:'Miguel Laduron',date:'2025-01-07'},approver:{signed:true,name:'Kristine Vandierendonck',date:'2025-01-07'}},revHistory:[{rev:'R00',date:'2019-11-06',editor:'A. Monkari',object:'Creation — replaces MG-000-00, IQ40501, IQ40502, IQ41601'},{rev:'R05',date:'2022-03-11',editor:'A. Monkari',object:'PART21J removed; level 6 added; template nomenclatures updated'},{rev:'R06',date:'2022-11-28',editor:'A. Monkari',object:'Complete overhaul'},{rev:'R09',date:'2025-01-07',editor:'H. Cox',object:'§6.8.5 Archiving in IQSMS; SW End-of-subscription; Part 21G SMS'}],tags:['Documentation','Control'],format:'PDF / SharePoint',language:'English',linkedDocs:['QD-001']},
   {id:'M02-02',ref:'M02-04-02-01',level:'H4',category:'procedures',title:'Control of Nonconforming Outputs',rev:'R05',status:'approved',date:'2024-09-12',owner:'QLT_QMS_TM',standard:'AS9100D §8.7',retention:'LOP+6 YRS',description:'Procedure for identification, segregation, disposition and records of nonconforming products and services.',applicability:'Production, Quality, Inspection',writer:'QLT_QMS_TM',checker:'QLT_QMS_MR',approver:'QLT_DR',approvals:{writer:{signed:true,name:'QLT_QMS_TM',date:'2024-09-10'},checker:{signed:true,name:'QLT_QMS_MR',date:'2024-09-11'},approver:{signed:true,name:'QLT_DR',date:'2024-09-12'}},revHistory:[{rev:'R00',date:'2019-01-10',editor:'QLT_QMS_TM',object:'Initial issue'},{rev:'R05',date:'2024-09-12',editor:'QLT_QMS_TM',object:'RDR workflow updated; IQSMS link added'}],tags:['NCR','Nonconformance'],format:'PDF / SharePoint',language:'English',linkedDocs:['M02-01']},
   {id:'M02-03',ref:'C03-06-04-01',level:'H4',category:'procedures',title:'Program and Technical Documentation Management',rev:'R02',status:'approved',date:'2024-06-01',owner:'DCC_MR',standard:'AS9100D §7.5',retention:'LOP+6 YRS',description:'Defines rules for managing program-level and technical documents including MT, FT, TH and program-specific documents.',applicability:'Engineering, DCC, Program Teams',writer:'DCC_MR',checker:'QLT_QMS_MR',approver:'QLT_DR',approvals:{writer:{signed:true,name:'DCC_MR',date:'2024-05-30'},checker:{signed:true,name:'QLT_QMS_MR',date:'2024-05-31'},approver:{signed:true,name:'QLT_DR',date:'2024-06-01'}},revHistory:[{rev:'R00',date:'2021-03-01',editor:'DCC_MR',object:'Initial issue'},{rev:'R02',date:'2024-06-01',editor:'DCC_MR',object:'Alignment with VMP-001-002 and DOA process map'}],tags:['Documentation','Program','Technical'],format:'PDF / SharePoint',language:'English',linkedDocs:['M02-01','QD-002']},
   {id:'M02-04',ref:'M02-02-05-01',level:'H4',category:'procedures',title:'Internal Audit Procedure',rev:'R04',status:'approved',date:'2024-03-20',owner:'QLT_QMS_MR',standard:'AS9100D §9.2',retention:'7 YRS',description:'Defines the planning, execution, reporting and follow-up of internal quality audits across all QMS processes.',applicability:'Internal audit function, process owners',writer:'QLT_QMS_MR',checker:'QLT_QMS_TM',approver:'QLT_DR',approvals:{writer:{signed:true,name:'QLT_QMS_MR',date:'2024-03-18'},checker:{signed:true,name:'QLT_QMS_TM',date:'2024-03-19'},approver:{signed:true,name:'QLT_DR',date:'2024-03-20'}},revHistory:[{rev:'R00',date:'2020-02-01',editor:'QLT_QMS_MR',object:'Initial issue'},{rev:'R04',date:'2024-03-20',editor:'QLT_QMS_MR',object:'Updated audit scope for EASA Part-21 surveillance'}],tags:['Audit'],format:'PDF / SharePoint',language:'English',linkedDocs:['M02-01']},
@@ -2478,7 +2482,7 @@ let QMS_CAPAS = [
 let QMS_AUDITS = [
   {id:'AUD-2024-001',type:'internal',scope:'Composites Production — C06',standard:'AS9100D §8.5 / NADCAP AC7118',status:'complete',lead:'A. Monkari',date:'2024-05-14',findings:3,observations:5,report:'AUD-2024-001-RPT'},
   {id:'AUD-2024-002',type:'internal',scope:'Documentation Control — M02',standard:'AS9100D §7.5',status:'complete',lead:'A. Monkari',date:'2024-04-02',findings:1,observations:2,report:'AUD-2024-002-RPT'},
-  {id:'AUD-2024-003',type:'external',scope:'Customer surveillance — Elbit Systems',standard:'AS9100D / AQAP-2110',status:'complete',lead:'Elbit QA',date:'2024-03-18',findings:0,observations:3,report:'AUD-2024-003-RPT'},
+  {id:'AUD-2024-003',type:'external',scope:'Customer surveillance audit',standard:'AS9100D / AQAP-2110',status:'complete',lead:'Customer QA',date:'2024-03-18',findings:0,observations:3,report:'AUD-2024-003-RPT'},
   {id:'AUD-2024-004',type:'internal',scope:'Supplier audit — Tier-1 fastener supplier',standard:'AS9100D §8.4',status:'planned',lead:'PUR_MR',date:'2024-08-20',findings:null,observations:null,report:''},
   {id:'AUD-2024-005',type:'external',scope:'NADCAP renewal — Composites',standard:'NADCAP AC7118/1',status:'planned',lead:'NADCAP PRI',date:'2024-10-08',findings:null,observations:null,report:''},
 ];
@@ -2571,7 +2575,7 @@ function vQMS(){
           <div style="flex:1;font-size:12px;font-weight:600">${lbl}</div>
           <span class="bdg b-gy" style="font-size:10px">${sub}</span>
         </div>`).join('')}
-        <div style="margin-top:10px;font-size:11px;color:var(--t2)"><i class="ti ti-info-circle"></i> Controlled per AS9100D §7.5 &amp; SABCA M02-02-04-01 R09. All changes require QMS-MR approval.</div>
+        <div style="margin-top:10px;font-size:11px;color:var(--t2)"><i class="ti ti-info-circle"></i> Controlled per AS9100D §7.5 &amp; M02-02-04-01 R09. All changes require QMS-MR approval.</div>
       </div>
       <div class="card">
         <div class="card-hdr"><div class="card-title"><i class="ti ti-clipboard-check"></i>Upcoming audits</div></div>
@@ -2622,7 +2626,7 @@ function vQMS(){
     <div class="page-hdr" style="margin-bottom:10px">
       <div>
         <div class="page-title" style="font-size:14px">Controlled Document Register</div>
-        <div style="font-size:11px;color:var(--t2)">AS9100D §7.5 · SABCA M02-02-04-01 R09 · Preparation → Check → Approval → Distribution → Archiving</div>
+        <div style="font-size:11px;color:var(--t2)">AS9100D §7.5 · M02-02-04-01 R09 · Preparation → Check → Approval → Distribution → Archiving</div>
       </div>
       <button class="btn btn-a" onclick="QST.dpForm=true;QMS_DOC_FORM=dpBlankDoc();QMS_DOC_PENDING_FILE=null;render()"><i class="ti ti-plus"></i>New document</button>
     </div>
@@ -2983,7 +2987,7 @@ function vQMS(){
   <div class="page-hdr" style="margin-bottom:10px">
     <div>
       <div class="page-title">Quality Management System</div>
-      <div style="font-size:11px;color:var(--t2);margin-top:1px">AS9100D / EN 9100 · NADCAP · EASA Part 21G &nbsp;·&nbsp; Ref: SABCA M02-02-04-01 R09</div>
+      <div style="font-size:11px;color:var(--t2);margin-top:1px">AS9100D / EN 9100 · NADCAP · EASA Part 21G &nbsp;·&nbsp; Ref: M02-02-04-01 R09</div>
     </div>
     <div style="display:flex;gap:6px;align-items:center">
       <span class="bdg b-gn" style="padding:5px 11px;font-size:11px"><i class="ti ti-certificate" style="font-size:11px"></i>&nbsp; AS9100D Certified</span>
@@ -3149,7 +3153,7 @@ function dpRenderForm(isEdit){
   <div class="page-hdr" style="margin-bottom:12px"><div>
     <button class="btn btn-s" onclick="${isEdit?`QST.dpEdit=null;QMS_DOC_FORM=null;QMS_DOC_PENDING_FILE=null;QST.dpActive='${f.id}';render()`:'QST.dpForm=false;QMS_DOC_FORM=null;QMS_DOC_PENDING_FILE=null;render()'}" style="margin-bottom:6px"><i class="ti ti-x"></i>Cancel</button>
     <div class="page-title">${isEdit?'Edit document — '+f.ref:'New controlled document'}</div>
-    <div style="font-size:11px;color:var(--t2)">AS9100D §7.5 · SABCA M02-02-04-01 R09</div>
+    <div style="font-size:11px;color:var(--t2)">AS9100D §7.5 · M02-02-04-01 R09</div>
   </div><button class="btn btn-g" onclick="dpSaveForm(${isEdit})"><i class="ti ti-check"></i>${isEdit?'Save changes':'Create document'}</button></div>
 
   <div class="card"><div class="card-hdr"><div class="card-title"><i class="ti ti-file-type-pdf"></i>Quality document (PDF)</div></div>
@@ -5114,11 +5118,13 @@ async function docregDelete(id){
    user — only managing the register itself requires the ddmr grant.
 ════════════════════════════════════════════ */
 function docNumFieldId(path){return 'dnf__'+path.replace(/\./g,'_');}
-// label/value/docId/required -> a frow-wrapped picker field. `path` just
-// needs to be unique within whichever form is currently rendered (only
-// one full-page form is ever open at a time in this app).
-function docNumField(path,label,value,docId,required){
-  const fid=docNumFieldId(path);
+// Shared renderer — a frow-wrapped, read-only picker field (no manual
+// entry) with a Search button and, once a document with an attachment is
+// picked, an "open PDF" button. `docNumField` derives the DOM id from a
+// dot-path (for forms whose fields live on a JS state object); `docNumFieldRaw`
+// takes an explicit id instead, for forms like New WO that read every
+// field straight off the DOM by id at submit time.
+function _docNumFieldHtml(fid,label,value,docId,required){
   return frow(label,
     `<div style="display:flex;gap:5px">
       <input class="fi" id="${fid}" readonly value="${(value||'').replace(/"/g,'&quot;')}" placeholder="No document selected — use Search" style="background:var(--s2);cursor:default;flex:1">
@@ -5127,6 +5133,14 @@ function docNumField(path,label,value,docId,required){
       <button type="button" class="btn btn-s" id="${fid}__pdfbtn" style="${docId?'':'display:none'}" onclick="docNumOpenPdf('${fid}')" title="Open attached PDF"><i class="ti ti-file-text"></i></button>
     </div>`,
     required?'*':'');
+}
+// `path` just needs to be unique within whichever form is currently
+// rendered (only one full-page form is ever open at a time in this app).
+function docNumField(path,label,value,docId,required){
+  return _docNumFieldHtml(docNumFieldId(path),label,value,docId,required);
+}
+function docNumFieldRaw(id,label,value,docId,required){
+  return _docNumFieldHtml(id,label,value,docId,required);
 }
 function docNumFieldValue(path){
   const fid=docNumFieldId(path);

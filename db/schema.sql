@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS work_orders (
   id           TEXT PRIMARY KEY,          -- e.g. 'WO-2024-001' (human-facing ID)
   component    TEXT,
   part_no      TEXT,
-  elbit_pn     TEXT,
+  customer_pn  TEXT,
   drawing_no   TEXT,
   batch_no     TEXT,
   rev          TEXT,
@@ -51,6 +51,19 @@ CREATE TABLE IF NOT EXISTS work_orders (
 
 CREATE INDEX IF NOT EXISTS idx_wo_status   ON work_orders(status);
 CREATE INDEX IF NOT EXISTS idx_wo_priority ON work_orders(priority);
+
+-- Column used to be named elbit_pn — renamed to the generic customer_pn so
+-- no customer name appears in the schema. On a database that already has
+-- the old column (and hasn't been renamed yet), carry its data across
+-- instead of losing it; a brand-new database never hits this (CREATE TABLE
+-- above already creates customer_pn directly).
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='work_orders' AND column_name='elbit_pn')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='work_orders' AND column_name='customer_pn') THEN
+    ALTER TABLE work_orders RENAME COLUMN elbit_pn TO customer_pn;
+  END IF;
+END $$;
 
 -- Auto-touch updated_at on any UPDATE.
 CREATE OR REPLACE FUNCTION touch_updated_at()
@@ -298,3 +311,12 @@ ALTER TABLE doc_registers ADD COLUMN IF NOT EXISTS attachment_mime           TEX
 ALTER TABLE doc_registers ADD COLUMN IF NOT EXISTS attachment_size           INTEGER;
 ALTER TABLE doc_registers ADD COLUMN IF NOT EXISTS attachment_uploaded_at    TIMESTAMPTZ;
 ALTER TABLE doc_registers ADD COLUMN IF NOT EXISTS attachment_uploaded_by    INTEGER REFERENCES users(id);
+
+-- Work orders' "Drawing Number" is now picked from the Document Register
+-- (no manual entry — see the docNumField picker in the frontend) rather
+-- than the old static catalogue, so it needs a real link to the register
+-- entry it points at. work_orders is created earlier in this file, before
+-- doc_registers exists, so the FK-bearing column is added here instead.
+-- ON DELETE SET NULL: if the register entry is ever removed, the work
+-- order just loses the link rather than pointing at a dangling ID.
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS drawing_no_doc_id TEXT REFERENCES doc_registers(id) ON DELETE SET NULL;
